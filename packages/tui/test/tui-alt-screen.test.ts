@@ -1197,6 +1197,24 @@ describe("TuiAltScreen", () => {
 		tui.stop();
 	});
 
+	it("replaces the active flash when replace is set", async () => {
+		const terminal = new VirtualTerminal(20, 4);
+		const tui = new TuiAltScreen(terminal);
+		tui.addChild(new Text("one\ntwo\nthree\nfour", 0, 0));
+		tui.start();
+		await terminal.waitForRender();
+
+		tui.flash("First", 500);
+		tui.flash("Second", 500, true);
+		await terminal.waitForRender();
+		const viewport = terminal.getViewport();
+		assert.ok(viewport[0]?.endsWith(" Second "));
+		assert.ok(!viewport.some((line) => line.includes("First")));
+		assert.strictEqual(viewport.filter((line) => line.includes(" Second ")).length, 1);
+
+		tui.stop();
+	});
+
 	it("auto-scrolls and extends a drag selection held at the viewport edge", async () => {
 		const terminal = new RecordingTerminal(20, 4);
 		const tui = new TuiAltScreen(terminal);

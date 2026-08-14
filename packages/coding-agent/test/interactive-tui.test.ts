@@ -1,5 +1,5 @@
 import type { Component, Terminal, TUI } from "@earendil-works/pi-tui";
-import { Container, isViewportTUI, Text } from "@earendil-works/pi-tui";
+import { Container, isViewportTUI, Text, TuiAltScreen } from "@earendil-works/pi-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import type { FullscreenExitOutput, TuiMode } from "../src/core/settings-manager.ts";
@@ -152,8 +152,10 @@ describe("InteractiveMode right-click paste", () => {
 type CopyCommandContext = {
 	session: { getLastAssistantText: () => string | undefined };
 	ui: ReturnType<typeof createInteractiveTui>;
+	renderer: ReturnType<typeof createInteractiveTui>;
 	showStatus: (message: string) => void;
 	showError: (message: string) => void;
+	flashToast: (message: string) => void;
 };
 
 type CopyCommandOptions = { flashConfirmation?: boolean };
@@ -180,11 +182,18 @@ describe("InteractiveMode copy confirmation", () => {
 		});
 		const showStatus = vi.fn();
 		const showError = vi.fn();
+		const flashToast = vi.fn((message: string) => {
+			if (ui instanceof TuiAltScreen) {
+				ui.flash(message, 3000);
+			}
+		});
 		const context: CopyCommandContext = {
 			session: { getLastAssistantText: () => "assistant response" },
 			ui,
+			renderer: ui,
 			showStatus,
 			showError,
+			flashToast,
 		};
 
 		ui.start();
@@ -211,11 +220,14 @@ describe("InteractiveMode copy confirmation", () => {
 		});
 		const showStatus = vi.fn();
 		const showError = vi.fn();
+		const flashToast = vi.fn();
 		const context: CopyCommandContext = {
 			session: { getLastAssistantText: () => "assistant response" },
 			ui,
+			renderer: ui,
 			showStatus,
 			showError,
+			flashToast,
 		};
 
 		await copyCommandPrototype.handleCopyCommand.call(context, { flashConfirmation: true });

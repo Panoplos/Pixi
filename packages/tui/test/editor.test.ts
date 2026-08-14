@@ -725,6 +725,29 @@ describe("Editor component", () => {
 		});
 	});
 
+	describe("Input prefix", () => {
+		it("shows the prefix only on the first line and indents continuations", () => {
+			const editor = new Editor(createTestTUI(40), defaultEditorTheme, { prefix: "❯ " });
+			editor.setText("first line\nsecond line");
+
+			const lines = editor.render(40).map(stripVTControlCharacters);
+			const content = lines.slice(1, -1);
+			const first = content[0]!;
+			const second = content[1]!;
+
+			assert.ok(first.startsWith("❯ first line"), `first line: ${JSON.stringify(first)}`);
+			assert.ok(second.includes("second line"), `second line: ${JSON.stringify(second)}`);
+			assert.ok(!second.includes("❯"), `prefix must not repeat on continuation: ${JSON.stringify(second)}`);
+
+			// Continuation indent aligns text under the first typed character.
+			const prefixW = visibleWidth("❯ ");
+			const firstTextCol = visibleWidth(first.slice(0, first.indexOf("first")));
+			const secondTextCol = visibleWidth(second.slice(0, second.indexOf("second")));
+			assert.strictEqual(firstTextCol, secondTextCol, `text should align: ${JSON.stringify({ first, second })}`);
+			assert.strictEqual(firstTextCol, prefixW);
+		});
+	});
+
 	describe("Grapheme-aware text wrapping", () => {
 		it("wraps lines correctly when text contains wide emojis", () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);

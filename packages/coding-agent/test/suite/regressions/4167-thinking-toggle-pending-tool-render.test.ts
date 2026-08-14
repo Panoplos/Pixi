@@ -4,6 +4,7 @@ import { Container, Text, type TUI } from "@earendil-works/pi-tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import type { AgentSessionEvent } from "../../../src/core/agent-session.ts";
 import type { SessionEntry } from "../../../src/core/session-manager.ts";
+import { ToolActivitySummaryComponent } from "../../../src/modes/interactive/components/tool-activity-summary.ts";
 import type { ToolExecutionComponent } from "../../../src/modes/interactive/components/tool-execution.ts";
 import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
 import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
@@ -36,6 +37,9 @@ type RenderSessionItems = (
 type RenderSessionContextThis = {
 	pendingTools: Map<string, ToolExecutionComponent>;
 	chatContainer: Container;
+	sectionByToolCall: Map<string, ToolActivitySummaryComponent>;
+	standaloneToolCall: Map<string, ToolExecutionComponent>;
+	activeToolSection: ToolActivitySummaryComponent | undefined;
 	footer: { invalidate(): void };
 	ui: TUI;
 	settingsManager: {
@@ -50,6 +54,12 @@ type RenderSessionContextThis = {
 	updateEditorBorderColor(): void;
 	getRegisteredToolDefinition(toolName: string): undefined;
 	addMessageToChat(message: AgentMessage, options?: { populateHistory?: boolean }): void;
+	finalizeActiveToolSection(): void;
+	getOrCreateActiveToolSection(): ToolActivitySummaryComponent;
+	updateExpandHints(): void;
+	getAggregateSections(): ToolActivitySummaryComponent[];
+	isStandaloneTool(name: string): boolean;
+	createToolExecution(name: string, id: string, args: unknown): ToolExecutionComponent;
 	renderSessionItems: RenderSessionItems;
 };
 
@@ -66,6 +76,9 @@ function createFakeInteractiveModeThis(): RenderSessionContextThis {
 	return {
 		pendingTools: new Map<string, ToolExecutionComponent>(),
 		chatContainer,
+		sectionByToolCall: new Map<string, ToolActivitySummaryComponent>(),
+		standaloneToolCall: new Map<string, ToolExecutionComponent>(),
+		activeToolSection: undefined,
 		footer: { invalidate: vi.fn() },
 		ui: { requestRender: vi.fn() } as unknown as TUI,
 		settingsManager: {
@@ -79,6 +92,26 @@ function createFakeInteractiveModeThis(): RenderSessionContextThis {
 		isInitialized: true,
 		updateEditorBorderColor: vi.fn(),
 		getRegisteredToolDefinition: (_toolName: string) => undefined,
+		finalizeActiveToolSection: (InteractiveMode.prototype as unknown as { finalizeActiveToolSection(): void })
+			.finalizeActiveToolSection,
+		getOrCreateActiveToolSection: (
+			InteractiveMode.prototype as unknown as {
+				getOrCreateActiveToolSection(): ToolActivitySummaryComponent;
+			}
+		).getOrCreateActiveToolSection,
+		updateExpandHints: (InteractiveMode.prototype as unknown as { updateExpandHints(): void }).updateExpandHints,
+		getAggregateSections: (
+			InteractiveMode.prototype as unknown as {
+				getAggregateSections(): ToolActivitySummaryComponent[];
+			}
+		).getAggregateSections,
+		isStandaloneTool: (InteractiveMode.prototype as unknown as { isStandaloneTool(name: string): boolean })
+			.isStandaloneTool,
+		createToolExecution: (
+			InteractiveMode.prototype as unknown as {
+				createToolExecution(name: string, id: string, args: unknown): ToolExecutionComponent;
+			}
+		).createToolExecution,
 		renderSessionItems: (InteractiveMode.prototype as unknown as { renderSessionItems: RenderSessionItems })
 			.renderSessionItems,
 		addMessageToChat(message: AgentMessage) {
@@ -137,6 +170,14 @@ function renderChat(container: Container): string {
 	return stripAnsi(container.render(120).join("\n"));
 }
 
+function expandAggregateSections(container: Container): void {
+	for (const child of container.children) {
+		if (child instanceof ToolActivitySummaryComponent) {
+			child.setExpanded(true);
+		}
+	}
+}
+
 describe("InteractiveMode.renderSessionEntries", () => {
 	beforeAll(() => {
 		initTheme("dark");
@@ -162,6 +203,7 @@ describe("InteractiveMode.renderSessionEntries", () => {
 		});
 
 		expect(fakeThis.pendingTools.has(TOOL_CALL_ID)).toBe(false);
+		expandAggregateSections(fakeThis.chatContainer);
 		expect(renderChat(fakeThis.chatContainer)).toContain("FINAL_RESULT");
 	});
 
@@ -177,6 +219,7 @@ describe("InteractiveMode.renderSessionEntries", () => {
 		);
 
 		expect(fakeThis.pendingTools.size).toBe(0);
+		expandAggregateSections(fakeThis.chatContainer);
 		expect(renderChat(fakeThis.chatContainer)).toContain("HISTORICAL_RESULT");
 	});
 });

@@ -152,42 +152,22 @@ describe("FooterComponent width handling", () => {
 		}
 	});
 
-	it("includes summary and tool result usage in the total cost", () => {
-		const session = createSession({
-			sessionName: "",
-			usage: {
-				input: 100,
-				output: 10,
-				cacheRead: 0,
-				cacheWrite: 0,
-				cost: { total: 0.5 },
-			},
-			branchUsage: {
-				input: 20,
-				output: 5,
-				cacheRead: 0,
-				cacheWrite: 0,
-				cost: { total: 0.25 },
-			},
-			compactionUsage: {
-				input: 5,
-				output: 2,
-				cacheRead: 0,
-				cacheWrite: 0,
-				cost: { total: 0.125 },
-			},
-			toolUsage: {
-				input: 15,
-				output: 3,
-				cacheRead: 0,
-				cacheWrite: 0,
-				cost: { total: 0.375 },
-			},
-		});
+	it("combines pwd, branch, context, and model into a single status line", () => {
+		const session = createSession({ sessionName: "" });
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		const statsLine = stripAnsi(footer.render(120)[1]);
-		expect(statsLine).toContain("$1.250");
+		const line = stripAnsi(footer.render(120)[0]);
+		expect(line).toContain("/tmp/project");
+		expect(line).toContain("(main)");
+		expect(line).toContain("12.3%/200k");
+		expect(line).toContain("test-model");
+	});
+
+	it("shows the auto-compact indicator when enabled", () => {
+		const session = createSession({ sessionName: "" });
+		const footer = new FooterComponent(session, createFooterData(1));
+
+		expect(stripAnsi(footer.render(120)[0])).toContain("(auto)");
 	});
 
 	it("shows the latest cache hit rate when cache usage is present", () => {
@@ -203,50 +183,6 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		const statsLine = stripAnsi(footer.render(120)[1]);
-		expect(statsLine).toContain("CH25.0%");
-	});
-
-	it("marks Kimi Coding costs as subscription estimates", () => {
-		const session = createSession({
-			sessionName: "",
-			provider: "kimi-coding",
-			usage: {
-				input: 100,
-				output: 10,
-				cacheRead: 0,
-				cacheWrite: 0,
-				cost: { total: 1.234 },
-			},
-		});
-		const footer = new FooterComponent(session, createFooterData(1));
-
-		expect(stripAnsi(footer.render(120)[1])).toContain("$1.234 (sub)");
-	});
-
-	it("marks explicitly identified subscription auth", () => {
-		const session = createSession({ sessionName: "", provider: "anthropic", usingSubscription: true });
-		const footer = new FooterComponent(session, createFooterData(1));
-
-		expect(stripAnsi(footer.render(120)[1])).toContain("$0.000 (sub)");
-	});
-
-	it("does not mark generic OAuth sign-in as a subscription", () => {
-		const session = createSession({
-			sessionName: "",
-			provider: "openrouter",
-			usage: {
-				input: 100,
-				output: 10,
-				cacheRead: 0,
-				cacheWrite: 0,
-				cost: { total: 1.234 },
-			},
-		});
-		const footer = new FooterComponent(session, createFooterData(1));
-		const stats = stripAnsi(footer.render(120)[1]);
-
-		expect(stats).toContain("$1.234");
-		expect(stats).not.toContain("(sub)");
+		expect(stripAnsi(footer.render(120)[0])).toContain("CHR:25.0%");
 	});
 });

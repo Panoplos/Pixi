@@ -227,12 +227,15 @@ interface LayoutLine {
 
 export interface EditorTheme {
 	borderColor: (str: string) => string;
+	prefixColor?: (str: string) => string;
 	selectList: SelectListTheme;
 }
 
 export interface EditorOptions {
 	paddingX?: number;
 	autocompleteMaxVisible?: number;
+	/** Optional leading marker shown at the start of each content line (e.g. a prompt chevron). */
+	prefix?: string;
 }
 
 const SLASH_COMMAND_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
@@ -280,6 +283,8 @@ export class Editor implements Component, Focusable {
 	protected tui: TUI;
 	private theme: EditorTheme;
 	private paddingX: number = 0;
+	private prefix: string = "";
+	private prefixColor: (str: string) => string = (str) => str;
 
 	// Store last render width for cursor navigation
 	private lastWidth: number = 80;
@@ -350,6 +355,8 @@ export class Editor implements Component, Focusable {
 		this.paddingX = Number.isFinite(paddingX) ? Math.max(0, Math.floor(paddingX)) : 0;
 		const maxVisible = options.autocompleteMaxVisible ?? 5;
 		this.autocompleteMaxVisible = Number.isFinite(maxVisible) ? Math.max(3, Math.min(20, Math.floor(maxVisible))) : 5;
+		this.prefix = options.prefix ?? "";
+		this.prefixColor = theme.prefixColor ?? ((str: string) => str);
 	}
 
 	/** Set of currently valid paste IDs, for marker-aware segmentation. */
@@ -486,7 +493,11 @@ export class Editor implements Component, Focusable {
 
 		// Layout width: with padding the cursor can overflow into it,
 		// without padding we reserve 1 column for the cursor.
-		const layoutWidth = Math.max(1, contentWidth - (paddingX ? 0 : 1));
+		let layoutWidth = Math.max(1, contentWidth - (paddingX ? 0 : 1));
+
+		// Reserve space for the leading prefix marker.
+		const prefixVisibleWidth = this.prefix ? visibleWidth(this.prefix) : 0;
+		layoutWidth = Math.max(1, layoutWidth - prefixVisibleWidth);
 
 		// Store for cursor navigation (must match wrapping width)
 		this.lastWidth = layoutWidth;
@@ -536,7 +547,19 @@ export class Editor implements Component, Focusable {
 		// autocomplete (e.g. slash-command menu) is visible.
 		const emitCursorMarker = this.focused;
 
-		for (const layoutLine of visibleLines) {
+		// The prefix marker shows only on the first layout line; continuation
+		// (wrapped/scrolled) lines are indented with spaces so the text aligns
+		// under the first typed character. Both are render-time decoration and
+		// stay separate from the text, so text selection never includes them.
+		const indent = this.prefix ? " ".repeat(prefixVisibleWidth) : "";
+		const leadingForLine = (lineIndex: number): string => {
+			if (!this.prefix) return "";
+			if (lineIndex === 0 && this.scrollOffset === 0) return this.prefixColor(this.prefix);
+			return indent;
+		};
+
+		for (let lineIndex = 0; lineIndex < visibleLines.length; lineIndex++) {
+			const layoutLine = visibleLines[lineIndex];
 			let displayText = layoutLine.text;
 			let lineVisibleWidth = visibleWidth(layoutLine.text);
 			let cursorInPadding = false;
@@ -570,12 +593,13 @@ export class Editor implements Component, Focusable {
 				}
 			}
 
-			// Calculate padding based on actual visible width
-			const padding = " ".repeat(Math.max(0, contentWidth - lineVisibleWidth));
+			// Calculate padding based on actual visible width (accounting for prefix)
+			const leading = leadingForLine(lineIndex);
+			const padding = " ".repeat(Math.max(0, contentWidth - prefixVisibleWidth - lineVisibleWidth));
 			const lineRightPadding = cursorInPadding ? rightPadding.slice(1) : rightPadding;
 
 			// Render the line (no side borders, just horizontal lines above and below)
-			result.push(`${leftPadding}${displayText}${padding}${lineRightPadding}`);
+			result.push(`${leftPadding}${leading}${displayText}${padding}${lineRightPadding}`);
 		}
 
 		// Render bottom border (with scroll indicator if more content below)
@@ -592,8 +616,9 @@ export class Editor implements Component, Focusable {
 			const autocompleteResult = this.autocompleteList.render(contentWidth);
 			for (const line of autocompleteResult) {
 				const lineWidth = visibleWidth(line);
-				const linePadding = " ".repeat(Math.max(0, contentWidth - lineWidth));
-				result.push(`${leftPadding}${line}${linePadding}${rightPadding}`);
+				const leading = indent; // align under the input text, not the prefix
+				const linePadding = " ".repeat(Math.max(0, contentWidth - prefixVisibleWidth - lineWidth));
+				result.push(`${leftPadding}${leading}${line}${linePadding}${rightPadding}`);
 			}
 		}
 

@@ -6,6 +6,7 @@ import { constants } from "fs";
 import { access as fsAccess, readFile as fsReadFile } from "fs/promises";
 import { type Static, Type } from "typebox";
 import { getReadmePath } from "../../config.ts";
+import { BODY_JOINT, BODY_JOINT_WIDTH } from "../../modes/interactive/components/diff.ts";
 import { keyHint, keyText } from "../../modes/interactive/components/keybinding-hints.ts";
 import { getLanguageFromPath, highlightCode, type Theme } from "../../modes/interactive/theme/theme.ts";
 import { processImage } from "../../utils/image-process.ts";
@@ -79,7 +80,7 @@ function formatReadLineRange(args: ReadRenderArgs | undefined, theme: Theme): st
 
 function formatReadCall(args: ReadRenderArgs | undefined, theme: Theme, cwd: string): string {
 	const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme, cwd);
-	return `${theme.fg("toolTitle", theme.bold("read"))} ${pathDisplay}${formatReadLineRange(args, theme)}`;
+	return `${theme.fg("toolTitle", theme.bold("Read"))}${theme.fg("toolTitle", `(${pathDisplay})`)}${formatReadLineRange(args, theme)}`;
 }
 
 function trimTrailingEmptyLines(lines: string[]): string[] {
@@ -188,7 +189,12 @@ function formatReadResult(
 	const maxLines = options.expanded ? lines.length : 10;
 	const displayLines = lines.slice(0, maxLines);
 	const remaining = lines.length - maxLines;
-	let text = `\n${displayLines.map((line) => (lang ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line)))).join("\n")}`;
+	const bodyIndent = " ".repeat(BODY_JOINT_WIDTH);
+	const body = displayLines
+		.map((line) => (lang ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line))))
+		.map((line, i) => `${i === 0 ? BODY_JOINT : bodyIndent}${line}`)
+		.join("\n");
+	let text = `\n${body}`;
 	if (remaining > 0) {
 		text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
 	}

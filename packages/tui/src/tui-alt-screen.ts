@@ -528,8 +528,8 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	}
 
 	/** Show a transient message in the alternate-screen flash stack. */
-	flash(message: string, durationMs?: number): void {
-		this.flashes.flash(message, durationMs);
+	flash(message: string, durationMs?: number, replace = false): void {
+		this.flashes.flash(message, durationMs, replace);
 	}
 
 	private handleViewportInput(data: string): { consume?: boolean } | undefined {

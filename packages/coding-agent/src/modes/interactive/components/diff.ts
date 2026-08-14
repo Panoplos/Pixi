@@ -1,3 +1,4 @@
+import type { Component } from "@earendil-works/pi-tui";
 import * as Diff from "diff";
 import { theme } from "../theme/theme.ts";
 
@@ -144,4 +145,92 @@ export function renderDiff(diffText: string, _options: RenderDiffOptions = {}): 
 	}
 
 	return result.join("\n");
+}
+
+// ============================================================================
+// Line-numbered diff rows with full-width background highlighting
+// ============================================================================
+
+export type DiffRowKind = "context" | "removed" | "added";
+
+export interface DiffRow {
+	kind: DiffRowKind;
+	/** Right-aligned line number string (already padded by the diff generator). */
+	lineNum: string;
+	content: string;
+}
+
+/**
+ * Parse a generated diff string (lines like `+1 foo`, `-1 bar`, ` 1 baz`) into
+ * a flat, ordered list of rows. Skip/hint lines (e.g. ` ...`) become context rows.
+ */
+export function parseDiffRows(diffText: string): DiffRow[] {
+	const rows: DiffRow[] = [];
+	for (const line of diffText.split("\n")) {
+		const parsed = parseDiffLine(line);
+		if (!parsed) {
+			continue;
+		}
+		const kind: DiffRowKind = parsed.prefix === "+" ? "added" : parsed.prefix === "-" ? "removed" : "context";
+		rows.push({ kind, lineNum: parsed.lineNum.trim(), content: parsed.content });
+	}
+	return rows;
+}
+
+export function countDiffChanges(rows: DiffRow[]): { added: number; removed: number } {
+	let added = 0;
+	let removed = 0;
+	for (const row of rows) {
+		if (row.kind === "added") added++;
+		else if (row.kind === "removed") removed++;
+	}
+	return { added, removed };
+}
+
+/** Column width of the `└ ` joint prefix (joint + space). */
+export const BODY_JOINT = "└ ";
+export const BODY_JOINT_WIDTH = 2;
+
+/**
+ * Width-aware component that renders each diff row. Context rows use the diff
+ * text color; removed/added rows use a full-width dark-red/dark-green
+ * background (starting at the line-number column) with white (`toolDiffText`)
+ * text. Pads every rendered line to `width`.
+ */
+export class DiffRowsComponent implements Component {
+	private rows: DiffRow[];
+
+	constructor(rows: DiffRow[]) {
+		this.rows = rows;
+	}
+
+	setRows(rows: DiffRow[]): void {
+		this.rows = rows;
+	}
+
+	invalidate(): void {}
+
+	render(width: number): string[] {
+		const lines: string[] = [];
+		const numWidth = Math.max(1, ...this.rows.map((r) => r.lineNum.length));
+		const bgRegion = Math.max(1, width - BODY_JOINT_WIDTH);
+		const indent = " ".repeat(BODY_JOINT_WIDTH);
+		const visibleLen = (s: string): number => s.replace(/\x1b\[[0-9;]*m/g, "").length;
+
+		for (const row of this.rows) {
+			const num = row.lineNum.padStart(numWidth, " ");
+			const sep = row.kind === "context" ? "  " : row.kind === "removed" ? " -" : " +";
+			const body = `${num}${sep}${replaceTabs(row.content)}`;
+			if (row.kind === "context") {
+				const styled = theme.fg("toolDiffContext", body);
+				lines.push(indent + styled + " ".repeat(Math.max(0, width - BODY_JOINT_WIDTH - visibleLen(styled))));
+			} else {
+				const bg = row.kind === "removed" ? "toolDiffRemovedBg" : "toolDiffAddedBg";
+				const styled = theme.fg("toolDiffText", body);
+				const pad = Math.max(0, bgRegion - visibleLen(styled));
+				lines.push(indent + theme.bg(bg, styled + " ".repeat(pad)));
+			}
+		}
+		return lines;
+	}
 }

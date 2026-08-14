@@ -149,6 +149,10 @@
 					"$ref": "#/$defs/colorValue",
 					"description": "Transcript search match text and current-match background (falls back to text when omitted)"
 				},
+				"promptPrefix": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Editor input prompt prefix marker (e.g. the leading chevron; falls back to accent when omitted)"
+				},
 				"userMessageBg": {
 					"$ref": "#/$defs/colorValue",
 					"description": "User message background"
@@ -180,6 +184,18 @@
 				"toolErrorBg": {
 					"$ref": "#/$defs/colorValue",
 					"description": "Tool execution box (error state)"
+				},
+				"toolBodyBg": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Tool execution box body background (read/bash success)"
+				},
+				"toolDiffAddedBg": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Edit diff added-row background (dark green)"
+				},
+				"toolDiffRemovedBg": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Edit diff removed-row background (dark red)"
 				},
 				"toolTitle": {
 					"$ref": "#/$defs/colorValue",
@@ -240,6 +256,10 @@
 				"toolDiffContext": {
 					"$ref": "#/$defs/colorValue",
 					"description": "Context lines in tool diffs"
+				},
+				"toolDiffText": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Text color on colored edit diff rows (added/removed)"
 				},
 				"syntaxComment": {
 					"$ref": "#/$defs/colorValue",

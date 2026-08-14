@@ -15,7 +15,6 @@ export class AssistantMessageComponent extends Container {
 	private contentContainer: Container;
 	private hideThinkingBlock: boolean;
 	private markdownTheme: MarkdownTheme;
-	private hiddenThinkingLabel: string;
 	private outputPad: number;
 	private markdownTransformers: readonly MarkdownTransformer[];
 	private lastMessage?: AssistantMessage;
@@ -26,7 +25,6 @@ export class AssistantMessageComponent extends Container {
 		message?: AssistantMessage,
 		hideThinkingBlock = false,
 		markdownTheme: MarkdownTheme = getMarkdownTheme(),
-		hiddenThinkingLabel = "Thinking...",
 		outputPad = 1,
 		markdownTransformers: readonly MarkdownTransformer[] = [],
 	) {
@@ -34,7 +32,6 @@ export class AssistantMessageComponent extends Container {
 
 		this.hideThinkingBlock = hideThinkingBlock;
 		this.markdownTheme = markdownTheme;
-		this.hiddenThinkingLabel = hiddenThinkingLabel;
 		this.outputPad = outputPad;
 		this.markdownTransformers = markdownTransformers;
 
@@ -56,13 +53,6 @@ export class AssistantMessageComponent extends Container {
 
 	setHideThinkingBlock(hide: boolean): void {
 		this.hideThinkingBlock = hide;
-		if (this.lastMessage) {
-			this.updateContent(this.lastMessage);
-		}
-	}
-
-	setHiddenThinkingLabel(label: string): void {
-		this.hiddenThinkingLabel = label;
 		if (this.lastMessage) {
 			this.updateContent(this.lastMessage);
 		}
@@ -93,8 +83,12 @@ export class AssistantMessageComponent extends Container {
 		// Clear content container
 		this.contentContainer.clear();
 
+		// Hidden thinking renders nothing, so it must not count as visible content;
+		// otherwise a thinking-only (tool-call) message would render a lone blank
+		// spacer line on a restored session.
+		const showingThinking = !this.hideThinkingBlock;
 		const hasVisibleContent = message.content.some(
-			(c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()),
+			(c) => (c.type === "text" && c.text.trim()) || (showingThinking && c.type === "thinking" && c.thinking.trim()),
 		);
 
 		if (hasVisibleContent) {
@@ -137,10 +131,10 @@ export class AssistantMessageComponent extends Container {
 					.some((c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()));
 
 				if (this.hideThinkingBlock) {
-					// Show one static label for each run of thinking blocks when hidden.
-					this.contentContainer.addChild(
-						new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0),
-					);
+					// Thinking is hidden. The live timed indicator (Thinking... -> Thought
+					// for Ns) is driven from interactive-mode's stream markers; a rebuilt
+					// session shows no thinking at all, so render nothing here.
+					continue;
 				} else {
 					// Render each run of thinking blocks as one Markdown section.
 					this.contentContainer.addChild(

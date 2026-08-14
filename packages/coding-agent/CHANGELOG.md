@@ -7,9 +7,19 @@
 - Added fullscreen transcript search with `Ctrl+Shift+F`, incremental match highlighting, configurable search match theme colors, and next/previous navigation with `Enter`/`Ctrl+G` and `Shift+Enter`/`Ctrl+Shift+G`.
 - Added experimental strict JSON-schema constrained sampling for the default `read`, `bash`, `edit`, and `write` tools under `PI_EXPERIMENTAL=1`.
 - Added a fullscreen exit output setting to choose between printing the final transcript and only a session resume hint.
+- Added aggregate tool-activity sections: consecutive tool calls in a turn collapse into a single live-updating summary line (e.g. `Committed 9be7da6, read 1 file, ran 3 shell commands`). Commentary no longer splits sections, so an entire turn folds into one per-turn summary (standalone `write`/`edit` blocks always render separately). `Ctrl+o` enters expand mode to reveal the most recent section; `Up`/`Down` navigate previous/next sections, showing their full tool output. Sections are derived from the session stream, so collapsed/expanded views are consistent across reload and compaction.
+- Added live thinking timing: while thinking is hidden, each thinking run shows `Thinking...` while streaming (on the `thinking_start` marker) and flips in place to `Thought for 4.2s` / `1m 05s` when it finishes (`thinking_end`). The timed line persists in the chat; restored sessions omit thinking entirely.
+- Added a default prompt guideline that the agent must issue tool calls directly without announcing or narrating them first. (The default prompt only; custom prompts are unchanged.)
+- Added a `❯ ` prefix to the interactive input box, colored via the new optional `promptPrefix` theme token (falls back to `accent` when omitted).
 
 ### Changed
 
+- `Ctrl+o` expand-mode Up/Down navigation now includes standalone `write`/`edit` tool blocks alongside aggregate sections, so expand mode can step through every expandable tool block in the transcript.
+
+- Tool execution blocks are colored per tool and state: `write`/`edit` blocks are now transparent on pending/success (keeping the error background on failure), while `read`/`bash` blocks use a new themeable `toolBodyBg` grey on success (transparent while pending, error background on failure). Other tools keep the existing pending/success/error backgrounds. Added the optional `toolBodyBg` theme token (defaults to the footer model grey), documented in `docs/themes.md`.
+- Reworked tool block layout: headers now render as `[bold]Tool[/bold](path|command)` (bash prints the command multi-line, indented under the header), tool output bodies use a `└ ` joint with continuation lines aligned to it, `write` bodies keep the language syntax theme and gain line numbers, and `edit` shows a line-numbered diff with a `└ Added/Removed N lines (and Removed N lines)` summary and full-width dark-red/dark-green row backgrounds (white text) via new `toolDiffAddedBg`/`toolDiffRemovedBg`/`toolDiffText` theme tokens.
+- Collapsed the interactive footer to a single status line combining cwd/branch, cache hit rate, context usage, the auto-compaction indicator, and the right-aligned model/effort info, with a themeable cyan/yellow context-usage threshold at 80%. Token counts and cost are no longer shown in the built-in footer.
+- Added optional `footer*` theme color tokens for the footer status line, documented in `docs/themes.md`.
 - Replaced the inherited Mistral SDK transport with a native Chat Completions HTTP stream, eliminating its generated client and schema runtime overhead.
 - Documented the generic `AI_AGENT=pi` process marker and how it differs from `PI_CODING_AGENT=true` ([#7747](https://github.com/earendil-works/pi/issues/7747)).
 
@@ -17,6 +27,8 @@
 
 - Fixed inherited GitHub Copilot login triggering API rate limits while enabling model policies by limiting concurrent policy updates ([#6187](https://github.com/earendil-works/pi/issues/6187)).
 - Fixed fullscreen transcript search snapping back to the current match during manual scrolling and fragmented mouse input leaking into the search query.
+- Fixed the live `Thinking...` indicator staying active while the assistant message streams when no `thinking_end` marker arrives (e.g. providers that only emit thinking deltas); it now flips to `Thought for Ns` once visible text or tool content starts streaming, and any dangling indicator is finalized at the end of the run.
+- Fixed rapid `Up`/`Down` expand-mode navigation stacking a new status box under the previous one: expand-status toasts now replace the previous toast instead of enqueuing/appending (a single in-place toast in regular mode, and a replace-style flash in fullscreen). Also fixed the fullscreen flash/toast path being unreachable because the `instanceof TuiAltScreen` check ran against the UI proxy reference instead of the real renderer.
 - Fixed inherited required LaTeX arguments starting on a new line being parsed as empty ([#7760](https://github.com/earendil-works/pi/issues/7760)).
 
 ## [0.84.1] - 2026-08-07

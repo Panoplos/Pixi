@@ -50,6 +50,7 @@ const ThemeJsonSchema = Type.Object({
 		scrollbarThumb: Type.Optional(ColorValueSchema),
 		searchMatchBg: Type.Optional(ColorValueSchema),
 		searchMatchText: Type.Optional(ColorValueSchema),
+		promptPrefix: Type.Optional(ColorValueSchema),
 		userMessageBg: ColorValueSchema,
 		userMessageText: ColorValueSchema,
 		customMessageBg: ColorValueSchema,
@@ -58,6 +59,10 @@ const ThemeJsonSchema = Type.Object({
 		toolPendingBg: ColorValueSchema,
 		toolSuccessBg: ColorValueSchema,
 		toolErrorBg: ColorValueSchema,
+		toolBodyBg: Type.Optional(ColorValueSchema),
+		toolDiffText: Type.Optional(ColorValueSchema),
+		toolDiffAddedBg: Type.Optional(ColorValueSchema),
+		toolDiffRemovedBg: Type.Optional(ColorValueSchema),
 		toolTitle: ColorValueSchema,
 		toolOutput: ColorValueSchema,
 		// Markdown (10 colors)
@@ -95,6 +100,14 @@ const ThemeJsonSchema = Type.Object({
 		thinkingMax: Type.Optional(ColorValueSchema),
 		// Bash Mode (1 color)
 		bashMode: ColorValueSchema,
+		// Footer status line (7 colors)
+		footerPath: Type.Optional(ColorValueSchema),
+		footerBranch: Type.Optional(ColorValueSchema),
+		footerCache: Type.Optional(ColorValueSchema),
+		footerContextSafe: Type.Optional(ColorValueSchema),
+		footerContextWarn: Type.Optional(ColorValueSchema),
+		footerAutoCompact: Type.Optional(ColorValueSchema),
+		footerModel: Type.Optional(ColorValueSchema),
 	}),
 	export: Type.Optional(
 		Type.Object({
@@ -156,7 +169,16 @@ export type ThemeColor =
 	| "thinkingHigh"
 	| "thinkingXhigh"
 	| "thinkingMax"
-	| "bashMode";
+	| "promptPrefix"
+	| "bashMode"
+	| "footerPath"
+	| "footerBranch"
+	| "footerCache"
+	| "footerContextSafe"
+	| "footerContextWarn"
+	| "footerAutoCompact"
+	| "footerModel"
+	| "toolDiffText";
 
 export type ThemeBg =
 	| "selectedBg"
@@ -166,10 +188,24 @@ export type ThemeBg =
 	| "customMessageBg"
 	| "toolPendingBg"
 	| "toolSuccessBg"
-	| "toolErrorBg";
+	| "toolErrorBg"
+	| "toolBodyBg"
+	| "toolDiffAddedBg"
+	| "toolDiffRemovedBg";
 
-type OptionalThemeColor = "thinkingMax" | "searchMatchText";
-type OptionalThemeBg = "scrollbarThumb" | "searchMatchBg";
+type OptionalThemeColor =
+	| "thinkingMax"
+	| "searchMatchText"
+	| "promptPrefix"
+	| "footerPath"
+	| "footerBranch"
+	| "footerCache"
+	| "footerContextSafe"
+	| "footerContextWarn"
+	| "footerAutoCompact"
+	| "footerModel"
+	| "toolDiffText";
+type OptionalThemeBg = "scrollbarThumb" | "searchMatchBg" | "toolBodyBg" | "toolDiffAddedBg" | "toolDiffRemovedBg";
 
 type ColorMode = "truecolor" | "256color";
 
@@ -333,6 +369,14 @@ function withThemeColorFallbacks(colors: ThemeJson["colors"]): ThemeJson["colors
 	scrollbarThumb: ColorValue;
 	searchMatchBg: ColorValue;
 	searchMatchText: ColorValue;
+	promptPrefix: ColorValue;
+	footerPath: ColorValue;
+	footerBranch: ColorValue;
+	footerCache: ColorValue;
+	footerContextSafe: ColorValue;
+	footerContextWarn: ColorValue;
+	footerAutoCompact: ColorValue;
+	footerModel: ColorValue;
 } {
 	return {
 		...colors,
@@ -340,6 +384,19 @@ function withThemeColorFallbacks(colors: ThemeJson["colors"]): ThemeJson["colors
 		scrollbarThumb: colors.scrollbarThumb ?? colors.selectedBg,
 		searchMatchBg: colors.searchMatchBg ?? colors.selectedBg,
 		searchMatchText: colors.searchMatchText ?? colors.text,
+		promptPrefix: colors.promptPrefix ?? colors.accent,
+		// Footer status line defaults for themes that don't define them
+		footerPath: colors.footerPath ?? "#CC5500",
+		footerBranch: colors.footerBranch ?? "#3FBF5F",
+		footerCache: colors.footerCache ?? "#E0E0E0",
+		footerContextSafe: colors.footerContextSafe ?? "#00D7FF",
+		footerContextWarn: colors.footerContextWarn ?? "#FFD54F",
+		footerAutoCompact: colors.footerAutoCompact ?? "#D4A017",
+		footerModel: colors.footerModel ?? "#9E9E9E",
+		toolDiffText: colors.toolDiffText ?? "#ffffff",
+		toolBodyBg: colors.toolBodyBg ?? "#33333c",
+		toolDiffAddedBg: colors.toolDiffAddedBg ?? "#1d3a1d",
+		toolDiffRemovedBg: colors.toolDiffRemovedBg ?? "#3d1d1d",
 	};
 }
 
@@ -639,6 +696,9 @@ function createTheme(themeJson: ThemeJson, mode?: ColorMode, sourcePath?: string
 		"toolPendingBg",
 		"toolSuccessBg",
 		"toolErrorBg",
+		"toolBodyBg",
+		"toolDiffAddedBg",
+		"toolDiffRemovedBg",
 	]);
 	for (const [key, value] of Object.entries(resolvedColors)) {
 		if (bgColorKeys.has(key)) {
@@ -1320,6 +1380,7 @@ export function getSelectListTheme(): SelectListTheme {
 export function getEditorTheme(): EditorTheme {
 	return {
 		borderColor: (text: string) => theme.fg("borderMuted", text),
+		prefixColor: (text: string) => theme.fg("promptPrefix", text),
 		selectList: getSelectListTheme(),
 	};
 }

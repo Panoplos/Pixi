@@ -31,6 +31,7 @@
 		"dim": "dimGray",
 		"text": "text",
 		"thinkingText": "gray",
+		"promptPrefix": "accent",
 
 		"selectedBg": "selectedBg",
 		"scrollbarThumb": "selectedBg",
@@ -44,6 +45,9 @@
 		"toolPendingBg": "toolPendingBg",
 		"toolSuccessBg": "toolSuccessBg",
 		"toolErrorBg": "toolErrorBg",
+		"toolBodyBg": "#33333c",
+		"toolDiffAddedBg": "#1d3a1d",
+		"toolDiffRemovedBg": "#3d1d1d",
 		"toolTitle": "text",
 		"toolOutput": "gray",
 
@@ -61,6 +65,7 @@
 		"toolDiffAdded": "green",
 		"toolDiffRemoved": "red",
 		"toolDiffContext": "gray",
+		"toolDiffText": "#ffffff",
 
 		"syntaxComment": "#6A9955",
 		"syntaxKeyword": "#569CD6",
@@ -80,7 +85,15 @@
 		"thinkingXhigh": "#d183e8",
 		"thinkingMax": "#ff5fff",
 
-		"bashMode": "green"
+		"bashMode": "green",
+
+		"footerPath": "#cc6a4a",
+		"footerBranch": "green",
+		"footerCache": "text",
+		"footerContextSafe": "cyan",
+		"footerContextWarn": "yellow",
+		"footerAutoCompact": "#d2a13a",
+		"footerModel": "gray"
 	},
 	"export": {
 		"pageBg": "#18181e",

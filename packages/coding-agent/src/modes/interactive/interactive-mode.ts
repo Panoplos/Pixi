@@ -146,6 +146,8 @@ import {
 	type StatusIndicator,
 	WorkingStatusIndicator,
 } from "./components/status-indicator.ts";
+import { ThinkingIndicatorComponent } from "./components/thinking-indicator.ts";
+import { ToolActivitySummaryComponent } from "./components/tool-activity-summary.ts";
 import { ToolExecutionComponent } from "./components/tool-execution.ts";
 import { TreeSelectorComponent } from "./components/tree-selector.ts";
 import { TrustSelectorComponent } from "./components/trust-selector.ts";
@@ -441,6 +443,8 @@ export class InteractiveMode {
 	// Status line tracking (for mutating immediately-sequential status updates)
 	private lastStatusSpacer: Spacer | undefined = undefined;
 	private lastStatusText: Text | undefined = undefined;
+	private toastStatusSpacer: Spacer | undefined = undefined;
+	private toastStatusText: Text | undefined = undefined;
 
 	// Streaming message tracking
 	private streamingComponent: AssistantMessageComponent | undefined = undefined;
@@ -448,9 +452,22 @@ export class InteractiveMode {
 
 	// Tool execution tracking: toolCallId -> component
 	private pendingTools = new Map<string, ToolExecutionComponent>();
+	/** The currently open aggregate tool-activity section, if any. */
+	private activeToolSection: ToolActivitySummaryComponent | undefined;
+	// In-progress thinking timing for the live stream (runtime-only; not rebuild).
+	private activeThinkingIndicator: ThinkingIndicatorComponent | undefined;
+	private thinkingStartMs: number | undefined;
+	/** Maps a tool call id to the aggregate section that owns it, for result routing. */
+	private sectionByToolCall = new Map<string, ToolActivitySummaryComponent>();
+	/** Standalone (non-aggregated) tool executions, e.g. write/edit, by tool call id. */
+	private standaloneToolCall = new Map<string, ToolExecutionComponent>();
 
 	// Tool output expansion state
 	private toolOutputExpanded = false;
+
+	// Aggregate-section expand mode (Ctrl+o), with Up/Down navigation.
+	private expandModeActive = false;
+	private expandFocusIndex = -1;
 
 	// Thinking block visibility state
 	private hideThinkingBlock = false;
@@ -574,6 +591,7 @@ export class InteractiveMode {
 		this.defaultEditor = new CustomEditor(this.ui, getEditorTheme(), this.keybindings, {
 			paddingX: editorPaddingX,
 			autocompleteMaxVisible,
+			prefix: "❯ ",
 		});
 		this.editor = this.defaultEditor;
 		this.editorContainer = new Container();
@@ -1973,6 +1991,9 @@ export class InteractiveMode {
 		this.streamingComponent = undefined;
 		this.streamingMessage = undefined;
 		this.pendingTools.clear();
+		this.sectionByToolCall.clear();
+		this.standaloneToolCall.clear();
+		this.finalizeActiveToolSection();
 		this.renderInitialMessages();
 	}
 
@@ -2103,14 +2124,8 @@ export class InteractiveMode {
 
 	private setHiddenThinkingLabel(label?: string): void {
 		this.hiddenThinkingLabel = label ?? this.defaultHiddenThinkingLabel;
-		for (const child of this.chatContainer.children) {
-			if (child instanceof AssistantMessageComponent) {
-				child.setHiddenThinkingLabel(this.hiddenThinkingLabel);
-			}
-		}
-		if (this.streamingComponent) {
-			this.streamingComponent.setHiddenThinkingLabel(this.hiddenThinkingLabel);
-		}
+		// The label is consumed by the live ThinkingIndicatorComponent (created on
+		// thinking_start); restored sessions show no thinking, so nothing re-renders.
 		this.ui.requestRender();
 	}
 
@@ -2813,7 +2828,8 @@ export class InteractiveMode {
 		// Global debug handler on TUI (works regardless of focus)
 		this.ui.onDebug = () => this.handleDebugCommand();
 		this.defaultEditor.onAction("app.model.select", () => this.showModelSelector());
-		this.defaultEditor.onAction("app.tools.expand", () => this.toggleToolOutputExpansion());
+		this.defaultEditor.onAction("app.tools.expand", () => this.toggleExpandMode());
+		this.defaultEditor.onNavigateVertical = (direction) => this.navigateExpand(direction);
 		this.defaultEditor.onAction("app.thinking.toggle", () => this.toggleThinkingBlockVisibility());
 		this.defaultEditor.onAction("app.editor.external", () => void this.handleOpenExternalEditor());
 		this.defaultEditor.onAction("app.message.copy", () => void this.handleCopyCommand({ flashConfirmation: true }));
@@ -3134,6 +3150,9 @@ export class InteractiveMode {
 					this.addMessageToChat(event.message);
 					this.ui.requestRender();
 				} else if (event.message.role === "user") {
+					// A new user turn closes any open aggregate tool-activity section.
+					this.finalizeActiveToolSection();
+					this.resetThinkingIndicator();
 					this.addMessageToChat(event.message);
 					this.updatePendingMessagesDisplay();
 					this.ui.requestRender();
@@ -3142,7 +3161,6 @@ export class InteractiveMode {
 						undefined,
 						this.hideThinkingBlock,
 						this.getMarkdownThemeWithSettings(),
-						this.hiddenThinkingLabel,
 						this.outputPad,
 						this.getMarkdownTransformers(),
 					);
@@ -3158,29 +3176,49 @@ export class InteractiveMode {
 					this.streamingMessage = event.message;
 					this.streamingComponent.updateContent(this.streamingMessage, true);
 
+					// Drive the live thinking indicator from the stream markers.
+					const streamEvent = event.assistantMessageEvent;
+					if (this.hideThinkingBlock) {
+						if (streamEvent?.type === "thinking_start") {
+							this.thinkingStartMs = Date.now();
+							this.activeThinkingIndicator = new ThinkingIndicatorComponent(
+								this.hiddenThinkingLabel,
+								this.outputPad,
+							);
+							this.chatContainer.addChild(this.activeThinkingIndicator);
+							this.activeThinkingIndicator.setActive();
+						} else if (streamEvent?.type === "thinking_end") {
+							this.finalizeThinkingIndicator();
+						} else if (
+							this.activeThinkingIndicator &&
+							(streamEvent?.type === "text_start" ||
+								streamEvent?.type === "text_delta" ||
+								streamEvent?.type === "text_end" ||
+								streamEvent?.type === "toolcall_start")
+						) {
+							// The model has moved on to streaming visible content, so the
+							// thinking run finished even if no thinking_end marker arrived.
+							this.finalizeThinkingIndicator();
+						}
+					}
+
 					for (const content of this.streamingMessage.content) {
 						if (content.type === "toolCall") {
-							if (!this.pendingTools.has(content.id)) {
-								const component = new ToolExecutionComponent(
+							if (this.isStandaloneTool(content.name)) {
+								// write/edit show as their own normal tool block, never folded
+								// into an aggregate group.
+								this.finalizeActiveToolSection();
+								const component = this.createStandaloneToolExecution(
 									content.name,
 									content.id,
 									content.arguments,
-									{
-										showImages: this.settingsManager.getShowImages(),
-										imageWidthCells: this.settingsManager.getImageWidthCells(),
-									},
-									this.getRegisteredToolDefinition(content.name),
-									this.ui,
-									this.sessionManager.getCwd(),
 								);
-								component.setExpanded(this.toolOutputExpanded);
-								this.chatContainer.addChild(component);
 								this.pendingTools.set(content.id, component);
 							} else {
-								const component = this.pendingTools.get(content.id);
-								if (component) {
-									component.updateArgs(content.arguments);
-								}
+								const section = this.getOrCreateActiveToolSection();
+								const component = section.addOrUpdateTool(content.name, content.id, content.arguments);
+								this.sectionByToolCall.set(content.id, section);
+								this.pendingTools.set(content.id, component);
 							}
 						}
 					}
@@ -3235,20 +3273,9 @@ export class InteractiveMode {
 			case "tool_execution_start": {
 				let component = this.pendingTools.get(event.toolCallId);
 				if (!component) {
-					component = new ToolExecutionComponent(
-						event.toolName,
-						event.toolCallId,
-						event.args,
-						{
-							showImages: this.settingsManager.getShowImages(),
-							imageWidthCells: this.settingsManager.getImageWidthCells(),
-						},
-						this.getRegisteredToolDefinition(event.toolName),
-						this.ui,
-						this.sessionManager.getCwd(),
-					);
-					component.setExpanded(this.toolOutputExpanded);
-					this.chatContainer.addChild(component);
+					const section = this.getOrCreateActiveToolSection();
+					component = section.addOrUpdateTool(event.toolName, event.toolCallId, event.args);
+					this.sectionByToolCall.set(event.toolCallId, section);
 					this.pendingTools.set(event.toolCallId, component);
 				}
 				component.markExecutionStarted();
@@ -3257,21 +3284,33 @@ export class InteractiveMode {
 			}
 
 			case "tool_execution_update": {
-				const component = this.pendingTools.get(event.toolCallId);
-				if (component) {
-					component.updateResult({ ...event.partialResult, isError: false }, true);
-					this.ui.requestRender();
+				const standalone = this.standaloneToolCall.get(event.toolCallId);
+				if (standalone) {
+					standalone.updateResult({ ...event.partialResult, isError: false }, true);
+				} else {
+					const section = this.sectionByToolCall.get(event.toolCallId) ?? this.activeToolSection;
+					if (section) {
+						section.updateResult(event.toolCallId, { ...event.partialResult, isError: false }, true);
+					}
 				}
+				this.ui.requestRender();
 				break;
 			}
 
 			case "tool_execution_end": {
-				const component = this.pendingTools.get(event.toolCallId);
-				if (component) {
-					component.updateResult({ ...event.result, isError: event.isError });
-					this.pendingTools.delete(event.toolCallId);
-					this.ui.requestRender();
+				const standalone = this.standaloneToolCall.get(event.toolCallId);
+				if (standalone) {
+					standalone.updateResult({ ...event.result, isError: event.isError });
+				} else {
+					const section = this.sectionByToolCall.get(event.toolCallId) ?? this.activeToolSection;
+					if (section) {
+						section.updateResult(event.toolCallId, { ...event.result, isError: event.isError });
+					}
 				}
+				this.standaloneToolCall.delete(event.toolCallId);
+				this.sectionByToolCall.delete(event.toolCallId);
+				this.pendingTools.delete(event.toolCallId);
+				this.ui.requestRender();
 				break;
 			}
 
@@ -3286,6 +3325,10 @@ export class InteractiveMode {
 					this.streamingMessage = undefined;
 				}
 				this.pendingTools.clear();
+				this.standaloneToolCall.clear();
+				this.sectionByToolCall.clear();
+				this.finalizeThinkingIndicator();
+				this.resetThinkingIndicator();
 
 				this.ui.requestRender();
 				break;
@@ -3439,6 +3482,35 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
+	/** Show a transient toast (like "Copied!") that fades without persisting in the history. */
+	private flashToast(message: string): void {
+		if (this.renderer instanceof TuiAltScreen) {
+			this.renderer.flash(message, 3000, true);
+		} else {
+			this.showStatusToast(message);
+		}
+	}
+
+	/** In-place transient toast for regular mode; replaces the previous toast instead of appending. */
+	private showStatusToast(message: string): void {
+		if (
+			this.toastStatusSpacer &&
+			this.toastStatusText &&
+			this.chatContainer.children.includes(this.toastStatusSpacer) &&
+			this.chatContainer.children.includes(this.toastStatusText)
+		) {
+			this.toastStatusText.setText(theme.fg("dim", message));
+		} else {
+			const spacer = new Spacer(1);
+			const text = new Text(theme.fg("dim", message), 1, 0);
+			this.chatContainer.addChild(spacer);
+			this.chatContainer.addChild(text);
+			this.toastStatusSpacer = spacer;
+			this.toastStatusText = text;
+		}
+		this.ui.requestRender();
+	}
+
 	private addCustomEntryToChat(entry: Extract<SessionEntry, { type: "custom" }>): void {
 		const renderer = this.session.extensionRunner.getEntryRenderer(entry.customType);
 		if (!renderer) {
@@ -3551,7 +3623,6 @@ export class InteractiveMode {
 					message,
 					this.hideThinkingBlock,
 					this.getMarkdownThemeWithSettings(),
-					this.hiddenThinkingLabel,
 					this.outputPad,
 					this.getMarkdownTransformers(),
 				);
@@ -3573,6 +3644,9 @@ export class InteractiveMode {
 		options: { updateFooter?: boolean; populateHistory?: boolean } = {},
 	): void {
 		this.pendingTools.clear();
+		this.sectionByToolCall.clear();
+		this.standaloneToolCall.clear();
+		this.finalizeActiveToolSection();
 		const renderedPendingTools = new Map<string, ToolExecutionComponent>();
 		// Cache-miss notices are not persisted; re-derive them from the full entry
 		// list and re-inject them after the assistant messages that paid for them.
@@ -3595,39 +3669,55 @@ export class InteractiveMode {
 			// Assistant messages need special handling for tool calls
 			if (message.role === "assistant") {
 				this.addMessageToChat(message);
-				// Render tool call components
+				// Render tool calls into the active aggregate section (write/edit standalone).
 				for (const content of message.content) {
-					if (content.type === "toolCall") {
-						const component = new ToolExecutionComponent(
-							content.name,
-							content.id,
-							content.arguments,
-							{
-								showImages: this.settingsManager.getShowImages(),
-								imageWidthCells: this.settingsManager.getImageWidthCells(),
-							},
-							this.getRegisteredToolDefinition(content.name),
-							this.ui,
-							this.sessionManager.getCwd(),
-						);
-						component.setExpanded(this.toolOutputExpanded);
-						this.chatContainer.addChild(component);
-
+					if (content.type !== "toolCall") continue;
+					if (this.isStandaloneTool(content.name)) {
+						// write/edit show as their own normal tool block, never folded into a group.
+						this.finalizeActiveToolSection();
+						const component = this.createStandaloneToolExecution(content.name, content.id, content.arguments);
 						if (message.stopReason === "aborted" || message.stopReason === "error") {
-							let errorMessage: string;
-							if (message.stopReason === "aborted") {
-								const retryAttempt = this.session.retryAttempt;
-								errorMessage =
-									retryAttempt > 0
-										? `Aborted after ${retryAttempt} retry attempt${retryAttempt > 1 ? "s" : ""}`
-										: "Operation aborted";
-							} else {
-								errorMessage = message.errorMessage || "Error";
-							}
-							component.updateResult({ content: [{ type: "text", text: errorMessage }], isError: true });
+							component.updateResult({
+								content: [
+									{
+										type: "text",
+										text:
+											message.stopReason === "aborted"
+												? this.session.retryAttempt > 0
+													? `Aborted after ${this.session.retryAttempt} retry attempt${this.session.retryAttempt > 1 ? "s" : ""}`
+													: "Operation aborted"
+												: message.errorMessage || "Error",
+									},
+								],
+								isError: true,
+							});
 						} else {
 							renderedPendingTools.set(content.id, component);
 						}
+						continue;
+					}
+
+					const section = this.getOrCreateActiveToolSection();
+					const component = section.addOrUpdateTool(content.name, content.id, content.arguments);
+					this.sectionByToolCall.set(content.id, section);
+
+					if (message.stopReason === "aborted" || message.stopReason === "error") {
+						let errorMessage: string;
+						if (message.stopReason === "aborted") {
+							const retryAttempt = this.session.retryAttempt;
+							errorMessage =
+								retryAttempt > 0
+									? `Aborted after ${retryAttempt} retry attempt${retryAttempt > 1 ? "s" : ""}`
+									: "Operation aborted";
+						} else {
+							errorMessage = message.errorMessage || "Error";
+						}
+						section.updateResult(content.id, {
+							content: [{ type: "text", text: errorMessage }],
+							isError: true,
+						});
+					} else {
+						renderedPendingTools.set(content.id, component);
 					}
 				}
 				if (message.stopReason !== "aborted" && message.stopReason !== "error") {
@@ -3635,13 +3725,23 @@ export class InteractiveMode {
 					if (miss) this.addCacheMissNotice(miss);
 				}
 			} else if (message.role === "toolResult") {
-				// Match tool results to pending tool components
-				const component = renderedPendingTools.get(message.toolCallId);
-				if (component) {
-					component.updateResult(message);
+				// Match tool results to their aggregate section for live summary refinements.
+				const section = this.sectionByToolCall.get(message.toolCallId);
+				if (section) {
+					section.updateResult(message.toolCallId, message);
 					renderedPendingTools.delete(message.toolCallId);
+				} else {
+					const component = renderedPendingTools.get(message.toolCallId);
+					if (component) {
+						component.updateResult(message);
+						renderedPendingTools.delete(message.toolCallId);
+					}
 				}
 			} else {
+				// User messages start a new turn; finalize any open aggregate section.
+				if (message.role === "user") {
+					this.finalizeActiveToolSection();
+				}
 				// All other messages use standard rendering
 				this.addMessageToChat(message, options);
 			}
@@ -4056,6 +4156,196 @@ export class InteractiveMode {
 			}
 		}
 		this.showStatus(`Tool output: ${expanded ? "expanded" : "collapsed"}`);
+	}
+
+	private createToolExecution(name: string, id: string, args: unknown): ToolExecutionComponent {
+		return new ToolExecutionComponent(
+			name,
+			id,
+			args,
+			{
+				showImages: this.settingsManager.getShowImages(),
+				imageWidthCells: this.settingsManager.getImageWidthCells(),
+			},
+			this.getRegisteredToolDefinition(name),
+			this.ui,
+			this.sessionManager.getCwd(),
+		);
+	}
+
+	/** Create and mount a standalone (non-aggregated) tool execution, e.g. write/edit. */
+	private createStandaloneToolExecution(name: string, id: string, args: unknown): ToolExecutionComponent {
+		const existing = this.standaloneToolCall.get(id);
+		if (existing) {
+			// Streaming fires repeated message_updates; reuse the component, don't add
+			// a new one each time (which stacked duplicate "edit ..." blocks).
+			existing.updateArgs(args);
+			return existing;
+		}
+		const component = this.createToolExecution(name, id, args);
+		component.setExpanded(this.toolOutputExpanded);
+		this.standaloneToolCall.set(id, component);
+		this.chatContainer.addChild(component);
+		return component;
+	}
+
+	/** Tools that must not be folded into an aggregate group (they show standalone). */
+	private isStandaloneTool(name: string): boolean {
+		return name === "write" || name === "edit";
+	}
+
+	/** Point the "(ctrl + o to expand)" hint at the most recent (last) section only. */
+	private updateExpandHints(): void {
+		const sections = this.getAggregateSections();
+		for (let i = 0; i < sections.length; i++) {
+			sections[i].setCollapseHint(i === sections.length - 1 ? "(ctrl+o to expand)" : "");
+		}
+	}
+
+	private getOrCreateActiveToolSection(): ToolActivitySummaryComponent {
+		if (!this.activeToolSection) {
+			this.activeToolSection = new ToolActivitySummaryComponent(
+				{
+					createExecution: (name, id, args) => this.createToolExecution(name, id, args),
+					expanded: this.toolOutputExpanded,
+				},
+				this.ui,
+			);
+			this.chatContainer.addChild(this.activeToolSection);
+			this.updateExpandHints();
+		}
+		return this.activeToolSection;
+	}
+
+	private finalizeActiveToolSection(): void {
+		this.activeToolSection = undefined;
+		this.updateExpandHints();
+	}
+
+	/** Flip an in-progress thinking label to `Thought for Ns` and clear the run state. */
+	private finalizeThinkingIndicator(): void {
+		if (!this.activeThinkingIndicator) return;
+		const elapsed = this.thinkingStartMs !== undefined ? Date.now() - this.thinkingStartMs : 0;
+		this.thinkingStartMs = undefined;
+		this.activeThinkingIndicator.setDone(elapsed);
+		this.activeThinkingIndicator = undefined;
+	}
+
+	/** Close any in-progress thinking timing (runtime-only; a done indicator persists). */
+	private resetThinkingIndicator(): void {
+		this.activeThinkingIndicator = undefined;
+		this.thinkingStartMs = undefined;
+	}
+
+	private getAggregateSections(): ToolActivitySummaryComponent[] {
+		return this.chatContainer.children.filter(
+			(child): child is ToolActivitySummaryComponent => child instanceof ToolActivitySummaryComponent,
+		);
+	}
+
+	/** Expandable tool blocks in chat order: aggregate sections plus standalone write/edit blocks. */
+	private getExpandableBlocks(): (ToolActivitySummaryComponent | ToolExecutionComponent)[] {
+		return this.chatContainer.children.filter(
+			(child): child is ToolActivitySummaryComponent | ToolExecutionComponent =>
+				child instanceof ToolActivitySummaryComponent || child instanceof ToolExecutionComponent,
+		);
+	}
+
+	private toggleExpandMode(): void {
+		if (!this.expandModeActive) {
+			const blocks = this.getExpandableBlocks();
+			if (blocks.length === 0) {
+				// No aggregate tool sections; keep the original behavior of expanding
+				// the startup help and loaded resources via Ctrl+o.
+				this.setToolsExpanded(!this.toolOutputExpanded);
+				return;
+			}
+			this.expandModeActive = true;
+			this.expandFocusIndex = blocks.length - 1;
+			this.applyExpandFocus();
+			this.flashToast(`Expand mode: ${this.expandFocusIndex + 1}/${blocks.length} (Up/Down to navigate)`);
+		} else {
+			this.expandModeActive = false;
+			this.expandFocusIndex = -1;
+			this.collapseAggregateSections();
+			this.flashToast("Expand mode: off");
+		}
+		this.ui.requestRender();
+	}
+
+	private applyExpandFocus(): void {
+		const blocks = this.getExpandableBlocks();
+		for (let index = 0; index < blocks.length; index++) {
+			blocks[index].setExpanded(index === this.expandFocusIndex);
+		}
+		this.scrollFocusedSectionToTop();
+	}
+
+	/**
+	 * Scroll the focused (expanded) section so its top lines up with the top of
+	 * the transcript viewport. This is a one-shot scroll: scrolling to a
+	 * non-end offset clears ScrollView's follow-end, so the user can still
+	 * scroll normally afterwards (it does not pin).
+	 */
+	private scrollFocusedSectionToTop(): void {
+		const blocks = this.getExpandableBlocks();
+		const section = blocks[this.expandFocusIndex];
+		if (!section || !this.transcriptScrollView) return;
+		const columns = this.ui.terminal.columns;
+		if (columns < 1) return;
+		const width = this.transcriptScrollView.getContentWidth(columns);
+		const offset = this.contentOffsetOf(this.documentContainer, section, width);
+		if (offset !== undefined) {
+			this.transcriptScrollView.scrollTo(offset);
+		}
+	}
+
+	/**
+	 * Return the rendered top offset (in lines) of `target` within `root` at
+	 * the given content width, or undefined when `target` is not a descendant.
+	 * Heights are measured by rendering each preceding sibling, so the result
+	 * accounts for wrapping and the current (expanded) state of siblings.
+	 */
+	private contentOffsetOf(root: Container, target: Component, width: number): number | undefined {
+		const walk = (container: Container, base: number): number | undefined => {
+			let offset = base;
+			for (const child of container.children) {
+				if (child === target) return offset;
+				if (child instanceof Container) {
+					const found = walk(child, offset);
+					if (found !== undefined) return found;
+				}
+				offset += child.render(width).length;
+			}
+			return undefined;
+		};
+		return walk(root, 0);
+	}
+
+	private collapseAggregateSections(): void {
+		for (const block of this.getExpandableBlocks()) {
+			block.setExpanded(false);
+		}
+	}
+
+	private navigateExpand(direction: -1 | 1): boolean {
+		if (!this.expandModeActive) return false;
+		const blocks = this.getExpandableBlocks();
+		if (blocks.length === 0) {
+			this.expandModeActive = false;
+			this.expandFocusIndex = -1;
+			this.flashToast("Expand mode: off");
+			this.ui.requestRender();
+			return true;
+		}
+		const index = Math.min(blocks.length - 1, Math.max(0, this.expandFocusIndex + direction));
+		if (index !== this.expandFocusIndex) {
+			this.expandFocusIndex = index;
+			this.applyExpandFocus();
+		}
+		this.flashToast(`Expand mode: ${this.expandFocusIndex + 1}/${blocks.length}`);
+		this.ui.requestRender();
+		return true;
 	}
 
 	private toggleThinkingBlockVisibility(): void {
@@ -5970,8 +6260,8 @@ export class InteractiveMode {
 
 		try {
 			await copyToClipboard(text);
-			if (options.flashConfirmation && this.ui instanceof TuiAltScreen) {
-				this.ui.flash("Copied!");
+			if (options.flashConfirmation && this.renderer instanceof TuiAltScreen) {
+				this.flashToast("Copied!");
 			} else {
 				this.showStatus("Copied last agent message to clipboard");
 			}
@@ -6182,7 +6472,7 @@ export class InteractiveMode {
 | \`${cycleThinkingLevel}\` | Cycle thinking level |
 | \`${cycleModelForward}\` / \`${cycleModelBackward}\` | Cycle models |
 | \`${selectModel}\` | Open model selector |
-| \`${expandTools}\` | Toggle tool output expansion |
+| \`${expandTools}\` | Expand mode: reveal tool activity sections (Up/Down to navigate) |
 | \`${toggleThinking}\` | Toggle thinking block visibility |
 | \`${externalEditor}\` | Edit message in external editor |
 | \`${copyMessage}\` | Copy last assistant message |

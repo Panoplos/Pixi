@@ -5,6 +5,24 @@ import { getTextOutput as getRenderedTextOutput } from "../../../core/tools/rend
 import { convertToPng } from "../../../utils/image-convert.ts";
 import { theme } from "../theme/theme.ts";
 
+type ToolBlockStyle = "transparent" | "body" | "default";
+
+// Per-tool block background styling. write/edit are transparent on success;
+// read/bash use the dedicated toolBodyBg grey; everything else keeps the
+// state-based pending/success/error backgrounds.
+function toolBlockStyle(toolName: string): ToolBlockStyle {
+	switch (toolName) {
+		case "write":
+		case "edit":
+			return "transparent";
+		case "read":
+		case "bash":
+			return "body";
+		default:
+			return "default";
+	}
+}
+
 export interface ToolExecutionOptions {
 	showImages?: boolean;
 	imageWidthCells?: number;
@@ -250,12 +268,32 @@ export class ToolExecutionComponent extends Container {
 		return super.render(width);
 	}
 
+	private toolBlockBackground(): ((text: string) => string) | undefined {
+		// Failure keeps the same error background for every tool.
+		if (this.result?.isError) {
+			return (t: string) => theme.bg("toolErrorBg", t);
+		}
+		const style = toolBlockStyle(this.toolName);
+		if (this.isPartial) {
+			// Pending: only default tools keep the dim pending background.
+			if (style === "default") {
+				return (t: string) => theme.bg("toolPendingBg", t);
+			}
+			return undefined;
+		}
+		// Success
+		switch (style) {
+			case "default":
+				return (t: string) => theme.bg("toolSuccessBg", t);
+			case "body":
+				return (t: string) => theme.bg("toolBodyBg", t);
+			default:
+				return undefined;
+		}
+	}
+
 	private updateDisplay(): void {
-		const bgFn = this.isPartial
-			? (text: string) => theme.bg("toolPendingBg", text)
-			: this.result?.isError
-				? (text: string) => theme.bg("toolErrorBg", text)
-				: (text: string) => theme.bg("toolSuccessBg", text);
+		const bgFn = this.toolBlockBackground();
 
 		let hasContent = false;
 		this.hideComponent = false;
@@ -313,7 +351,7 @@ export class ToolExecutionComponent extends Container {
 				}
 			}
 		} else {
-			this.contentText.setCustomBgFn(bgFn);
+			this.contentText.setCustomBgFn(bgFn ?? ((t: string) => t));
 			this.contentText.setText(this.formatToolExecution());
 			hasContent = true;
 		}

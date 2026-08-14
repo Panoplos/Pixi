@@ -3,8 +3,7 @@ import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/p
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
-import { addUsageToTotals, createUsageTotals } from "../../../core/usage-totals.ts";
-import { theme } from "../theme/theme.ts";
+import { type ThemeColor, theme } from "../theme/theme.ts";
 
 /**
  * Sanitize text for display in a single-line status.
@@ -84,22 +83,14 @@ export class FooterComponent implements Component {
 	render(width: number): string[] {
 		const state = this.session.state;
 
-		// Calculate cumulative usage from ALL session entries (not just post-compaction messages)
-		const usageTotals = createUsageTotals();
+		// Track the cache hit rate of the most recent assistant message.
 		let latestCacheHitRate: number | undefined;
-
 		for (const entry of this.session.sessionManager.getEntries()) {
 			if (entry.type === "message" && entry.message.role === "assistant") {
-				addUsageToTotals(usageTotals, entry.message.usage);
-
 				const latestPromptTokens =
 					entry.message.usage.input + entry.message.usage.cacheRead + entry.message.usage.cacheWrite;
 				latestCacheHitRate =
 					latestPromptTokens > 0 ? (entry.message.usage.cacheRead / latestPromptTokens) * 100 : undefined;
-			} else if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.usage) {
-				addUsageToTotals(usageTotals, entry.message.usage);
-			} else if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage) {
-				addUsageToTotals(usageTotals, entry.usage);
 			}
 		}
 
@@ -111,59 +102,37 @@ export class FooterComponent implements Component {
 		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
 
 		// Replace home directory with ~
-		let pwd = formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE);
-
-		// Add git branch if available
+		const pwd = formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE);
 		const branch = this.footerData.getGitBranch();
-		if (branch) {
-			pwd = `${pwd} (${branch})`;
-		}
-
-		// Add session name if set
 		const sessionName = this.session.sessionManager.getSessionName();
-		if (sessionName) {
-			pwd = `${pwd} • ${sessionName}`;
+
+		// Left side: path group + cache hit rate + context usage + auto-compact indicator
+		const pathText =
+			theme.fg("footerPath", pwd) +
+			(branch ? theme.fg("footerBranch", ` (${branch})`) : "") +
+			(sessionName ? theme.fg("footerPath", ` • ${sessionName}`) : "");
+
+		const leftTokens: string[] = [pathText];
+		if (latestCacheHitRate !== undefined) {
+			leftTokens.push(theme.fg("footerCache", `CHR:${latestCacheHitRate.toFixed(1)}%`));
 		}
 
-		// Build stats line
-		const statsParts = [];
-		if (usageTotals.input) statsParts.push(`↑${formatTokens(usageTotals.input)}`);
-		if (usageTotals.output) statsParts.push(`↓${formatTokens(usageTotals.output)}`);
-		if (usageTotals.cacheRead) statsParts.push(`R${formatTokens(usageTotals.cacheRead)}`);
-		if (usageTotals.cacheWrite) statsParts.push(`W${formatTokens(usageTotals.cacheWrite)}`);
-		if ((usageTotals.cacheRead > 0 || usageTotals.cacheWrite > 0) && latestCacheHitRate !== undefined) {
-			statsParts.push(`CH${latestCacheHitRate.toFixed(1)}%`);
-		}
-
-		// Kimi Coding is subscription-backed despite using API-key authentication.
-		const usingSubscription = state.model
-			? state.model.provider === "kimi-coding" || this.session.modelRuntime.isUsingSubscription(state.model.provider)
-			: false;
-		if (usageTotals.cost || usingSubscription) {
-			const costStr = `$${usageTotals.cost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`;
-			statsParts.push(costStr);
-		}
-
-		// Colorize context percentage based on usage
-		let contextPercentStr: string;
-		const autoIndicator = this.autoCompactEnabled ? " (auto)" : "";
+		// Colorize context % based on usage: cyan under 80%, yellow at/above 80%
 		const contextPercentDisplay =
 			contextPercent === "?"
-				? `?/${formatTokens(contextWindow)}${autoIndicator}`
-				: `${contextPercent}%/${formatTokens(contextWindow)}${autoIndicator}`;
-		if (contextPercentValue > 90) {
-			contextPercentStr = theme.fg("error", contextPercentDisplay);
-		} else if (contextPercentValue > 70) {
-			contextPercentStr = theme.fg("warning", contextPercentDisplay);
-		} else {
-			contextPercentStr = contextPercentDisplay;
+				? `?/${formatTokens(contextWindow)}`
+				: `${contextPercent}%/${formatTokens(contextWindow)}`;
+		const contextColor: ThemeColor = contextPercentValue >= 80 ? "footerContextWarn" : "footerContextSafe";
+		leftTokens.push(theme.fg(contextColor, contextPercentDisplay));
+
+		if (this.autoCompactEnabled) {
+			leftTokens.push(theme.fg("footerAutoCompact", "(auto)"));
 		}
-		statsParts.push(contextPercentStr);
 		if (areExperimentalFeaturesEnabled()) {
-			statsParts.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("warning", "xp"))}`);
+			leftTokens.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("warning", "xp"))}`);
 		}
 
-		let statsLeft = statsParts.join(" ");
+		let statsLeft = leftTokens.join(" · ");
 
 		// Add model name on the right side, plus thinking level if model supports it
 		const modelName = state.model?.id || "no-model";
@@ -204,7 +173,7 @@ export class FooterComponent implements Component {
 		if (totalNeeded <= width) {
 			// Both fit - add padding to right-align model
 			const padding = " ".repeat(width - statsLeftWidth - rightSideWidth);
-			statsLine = statsLeft + padding + rightSide;
+			statsLine = statsLeft + padding + theme.fg("footerModel", rightSide);
 		} else {
 			// Need to truncate right side
 			const availableForRight = width - statsLeftWidth - minPadding;
@@ -212,22 +181,14 @@ export class FooterComponent implements Component {
 				const truncatedRight = truncateToWidth(rightSide, availableForRight, "");
 				const truncatedRightWidth = visibleWidth(truncatedRight);
 				const padding = " ".repeat(Math.max(0, width - statsLeftWidth - truncatedRightWidth));
-				statsLine = statsLeft + padding + truncatedRight;
+				statsLine = statsLeft + padding + theme.fg("footerModel", truncatedRight);
 			} else {
 				// Not enough space for right side at all
 				statsLine = statsLeft;
 			}
 		}
 
-		// Apply dim to each part separately. statsLeft may contain color codes (for context %)
-		// that end with a reset, which would clear an outer dim wrapper. So we dim the parts
-		// before and after the colored section independently.
-		const dimStatsLeft = theme.fg("dim", statsLeft);
-		const remainder = statsLine.slice(statsLeft.length); // padding + rightSide
-		const dimRemainder = theme.fg("dim", remainder);
-
-		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
-		const lines = [pwdLine, dimStatsLeft + dimRemainder];
+		const lines = [statsLine];
 
 		// Add extension statuses on a single line, sorted by key alphabetically
 		const extensionStatuses = this.footerData.getExtensionStatuses();

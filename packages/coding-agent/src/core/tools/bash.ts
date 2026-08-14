@@ -4,6 +4,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Container, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { spawn } from "child_process";
 import { type Static, Type } from "typebox";
+import { BODY_JOINT, BODY_JOINT_WIDTH } from "../../modes/interactive/components/diff.ts";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import { truncateToVisualLines } from "../../modes/interactive/components/visual-truncate.ts";
 import { theme } from "../../modes/interactive/theme/theme.ts";
@@ -234,7 +235,13 @@ function formatBashCall(args: { command?: string; timeout?: number } | undefined
 	const timeout = args?.timeout as number | undefined;
 	const timeoutSuffix = timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : "";
 	const commandDisplay = command === null ? invalidArgText(theme) : command ? command : theme.fg("toolOutput", "...");
-	return theme.fg("toolTitle", theme.bold(`$ ${commandDisplay}`)) + timeoutSuffix;
+	// indent multi-line command continuation under the `Bash(` header
+	const indent = "Bash(".length;
+	const formatted = commandDisplay
+		.split("\n")
+		.map((line, i) => (i === 0 ? line : " ".repeat(indent) + line))
+		.join("\n");
+	return `${theme.fg("toolTitle", theme.bold("Bash"))}${theme.fg("toolTitle", `(${formatted})`)}` + timeoutSuffix;
 }
 
 function rebuildBashResultRenderComponent(
@@ -262,9 +269,10 @@ function rebuildBashResultRenderComponent(
 	}
 
 	if (output) {
+		const bodyIndent = " ".repeat(BODY_JOINT_WIDTH);
 		const styledOutput = output
 			.split("\n")
-			.map((line) => theme.fg("toolOutput", line))
+			.map((line, i) => `${i === 0 ? BODY_JOINT : bodyIndent}${theme.fg("toolOutput", line)}`)
 			.join("\n");
 
 		if (options.expanded) {

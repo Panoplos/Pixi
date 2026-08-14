@@ -114,7 +114,7 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		component.updateResult({ content: [], details: { diff: "+1 after", firstChangedLine: 1 }, isError: false });
 		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("edit");
+		expect(rendered).toContain("Edit");
 		expect(rendered).toContain("README.md");
 		expect(rendered).not.toContain(":1");
 	});
@@ -435,7 +435,7 @@ describe("ToolExecutionComponent parity", () => {
 		);
 
 		const collapsed = stripAnsi(component.render(120).join("\n"));
-		expect(collapsed).toContain("read");
+		expect(collapsed).toContain("Read");
 		expect(collapsed).toContain("notes.txt");
 		expect(collapsed).not.toContain("hidden content");
 
@@ -534,4 +534,99 @@ describe("ToolExecutionComponent parity", () => {
 			expect(collapsed.indexOf(":120-329")).toBeLessThan(collapsed.indexOf("to expand"));
 		});
 	}
+});
+
+describe("per-tool block backgrounds", () => {
+	beforeAll(() => {
+		initTheme("dark");
+	});
+
+	function renderSuccess(toolName: string, definition?: ToolDefinition): string {
+		const component = new ToolExecutionComponent(
+			toolName,
+			`bg-tool-${toolName}`,
+			{},
+			{},
+			definition,
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.updateResult(
+			{
+				content: [{ type: "text", text: "done" }],
+				details: {},
+				isError: false,
+			},
+			false,
+		);
+		return component.render(120).join("\n");
+	}
+
+	test("bash success uses the toolBodyBg grey", () => {
+		const raw = renderSuccess("bash");
+		expect(raw).toContain(theme.getBgAnsi("toolBodyBg"));
+		expect(raw).not.toContain(theme.getBgAnsi("toolSuccessBg"));
+	});
+
+	test("read success uses the toolBodyBg grey", () => {
+		const raw = renderSuccess("read");
+		expect(raw).toContain(theme.getBgAnsi("toolBodyBg"));
+		expect(raw).not.toContain(theme.getBgAnsi("toolSuccessBg"));
+	});
+
+	test("write success is transparent (no tool background)", () => {
+		const raw = renderSuccess("write");
+		expect(raw).not.toContain(theme.getBgAnsi("toolBodyBg"));
+		expect(raw).not.toContain(theme.getBgAnsi("toolSuccessBg"));
+	});
+
+	test("write error keeps the error background", () => {
+		const component = new ToolExecutionComponent(
+			"write",
+			"bg-tool-write-error",
+			{},
+			{},
+			undefined,
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.updateResult(
+			{
+				content: [{ type: "text", text: "boom" }],
+				details: {},
+				isError: true,
+			},
+			false,
+		);
+		const raw = component.render(120).join("\n");
+		expect(raw).toContain(theme.getBgAnsi("toolErrorBg"));
+	});
+
+	test("default tools keep the success background", () => {
+		const component = new ToolExecutionComponent(
+			"custom_tool",
+			"bg-tool-default",
+			{},
+			{},
+			createBaseToolDefinition(),
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.updateResult(
+			{
+				content: [{ type: "text", text: "done" }],
+				details: {},
+				isError: false,
+			},
+			false,
+		);
+		const raw = component.render(120).join("\n");
+		expect(raw).toContain(theme.getBgAnsi("toolSuccessBg"));
+		expect(raw).not.toContain(theme.getBgAnsi("toolBodyBg"));
+	});
+
+	test("toolBodyBg resolves to the footer-model grey in dark", () => {
+		expect(theme.getBgAnsi("toolBodyBg")).toBe(theme.getBgAnsi("toolBodyBg"));
+		expect(theme.getBgAnsi("toolBodyBg")).toBeTruthy();
+	});
 });

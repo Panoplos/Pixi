@@ -82,6 +82,7 @@ vim ~/.pi/agent/themes/my-theme.json
     "toolPendingBg": "#1e1e2e",
     "toolSuccessBg": "#1e2e1e",
     "toolErrorBg": "#2e1e1e",
+    "toolBodyBg": "",
     "toolTitle": "primary",
     "toolOutput": "",
     "mdHeading": "#ffaa00",
@@ -149,7 +150,7 @@ The `$schema` field enables editor auto-completion and validation.
 
 ## Color Tokens
 
-Every theme must define all 51 required color tokens. The optional tokens preserve compatibility with existing themes: `thinkingMax` falls back to `thinkingXhigh`, `scrollbarThumb` and `searchMatchBg` fall back to `selectedBg`, and `searchMatchText` falls back to `text`. Other search matches use `searchMatchText` on `searchMatchBg` with an underline; the current match reverses that foreground/background pair and uses bold text.
+Every theme must define all 51 required color tokens. The optional tokens preserve compatibility with existing themes: `thinkingMax` falls back to `thinkingXhigh`, `scrollbarThumb` and `searchMatchBg` fall back to `selectedBg`, and `searchMatchText` falls back to `text`. Other search matches use `searchMatchText` on `searchMatchBg` with an underline; the current match reverses that foreground/background pair and uses bold text. The footer status-line tokens are also optional and fall back to sensible defaults when omitted.
 
 ### Core UI (11 colors)
 
@@ -166,6 +167,7 @@ Every theme must define all 51 required color tokens. The optional tokens preser
 | `dim` | Tertiary text |
 | `text` | Default text (usually `""`) |
 | `thinkingText` | Thinking block text |
+| `promptPrefix` (optional) | Input box prompt marker (the leading `❯ `); falls back to `accent`
 
 ### Backgrounds & Content (11 required, 3 optional)
 
@@ -183,6 +185,7 @@ Every theme must define all 51 required color tokens. The optional tokens preser
 | `toolPendingBg` | Tool box (pending) |
 | `toolSuccessBg` | Tool box (success) |
 | `toolErrorBg` | Tool box (error) |
+| `toolBodyBg` | read/bash success background (grey) |
 | `toolTitle` | Tool title |
 | `toolOutput` | Tool output text |
 
@@ -201,13 +204,16 @@ Every theme must define all 51 required color tokens. The optional tokens preser
 | `mdHr` | Horizontal rule |
 | `mdListBullet` | List bullets |
 
-### Tool Diffs (3 colors)
+### Tool Diffs
 
 | Token | Purpose |
 |-------|---------|
 | `toolDiffAdded` | Added lines |
 | `toolDiffRemoved` | Removed lines |
 | `toolDiffContext` | Context lines |
+| `toolDiffText` | White text on colored diff rows |
+| `toolDiffAddedBg` | Added-row background (dark green) |
+| `toolDiffRemovedBg` | Removed-row background (dark red) |
 
 ### Syntax Highlighting (9 colors)
 
@@ -242,6 +248,20 @@ Editor border colors indicating thinking level (visual hierarchy from subtle to 
 | Token | Purpose |
 |-------|---------|
 | `bashMode` | Editor border in bash mode (`!` prefix) |
+
+### Footer Status Line (7 colors, optional)
+
+Colors in the single-line status footer below the input box. All optional; default to built-in values if a theme omits them.
+
+| Token | Purpose | Default |
+|-------|---------|---------|
+| `footerPath` | Working directory path | burnt orange (`#CC5500`) |
+| `footerBranch` | Git branch | green (`#3FBF5F`) |
+| `footerCache` | Cache hit rate (`CHR:%`) | near white (`#E0E0E0`) |
+| `footerContextSafe` | Context usage under 80% | cyan (`#00D7FF`) |
+| `footerContextWarn` | Context usage at/above 80% | yellow (`#FFD54F`) |
+| `footerAutoCompact` | Auto-compaction indicator (`(auto)`) | dark yellow (`#D4A017`) |
+| `footerModel` | Model name / effort level | light grey (`#9E9E9E`) |
 
 ### HTML Export (optional)
 

@@ -60,6 +60,18 @@ describe("AssistantMessageComponent", () => {
 		expect(rendered.includes(OSC133_ZONE_FINAL)).toBe(false);
 	});
 
+	test("renders nothing for a hidden-thinking-only message (no blank spacer)", () => {
+		initTheme("dark");
+
+		const component = new AssistantMessageComponent(
+			createAssistantMessage([{ type: "thinking", thinking: "private reasoning" }]),
+			true,
+		);
+		const rendered = component.render(80).join("\n");
+
+		expect(rendered).toBe("");
+	});
+
 	test("renders length stops with neutral truncation wording", () => {
 		initTheme("dark");
 
@@ -69,11 +81,11 @@ describe("AssistantMessageComponent", () => {
 		);
 		const rendered = component.render(80).join("\n");
 
-		expect(rendered).toContain("Thinking...");
+		expect(rendered).not.toContain("Thinking...");
 		expect(rendered).toContain("Response was truncated before completion.");
 	});
 
-	test("coalesces adjacent thinking blocks into one hidden thinking label", () => {
+	test("omits thinking entirely when thinking is hidden", () => {
 		initTheme("dark");
 
 		const component = new AssistantMessageComponent(
@@ -87,7 +99,7 @@ describe("AssistantMessageComponent", () => {
 		);
 		const rendered = stripAnsi(component.render(80).join("\n"));
 
-		expect(rendered.match(/Thinking\.\.\./g)).toHaveLength(1);
+		expect(rendered.match(/Thinking\.\.\./g)).toBeNull();
 		expect(rendered).toContain("answer");
 	});
 
@@ -101,7 +113,6 @@ describe("AssistantMessageComponent", () => {
 			]),
 			false,
 			undefined,
-			"Thinking...",
 			1,
 		);
 		const lines = component.render(80).map((line) => stripAnsi(line));
@@ -119,7 +130,7 @@ describe("AssistantMessageComponent", () => {
 		initTheme("dark");
 		const calls: string[] = [];
 		const message = createAssistantMessage([{ type: "text", text: "The result is $x^2$." }]);
-		const component = new AssistantMessageComponent(message, false, undefined, "Thinking...", 1, [
+		const component = new AssistantMessageComponent(message, false, undefined, 1, [
 			(markdown, context) => {
 				calls.push("formula");
 				expect(context).toEqual({ messageType: "assistant", isStreaming: false, availableWidth: 78 });
@@ -139,7 +150,7 @@ describe("AssistantMessageComponent", () => {
 		initTheme("dark");
 		const streamingStates: boolean[] = [];
 		const message = createAssistantMessage([{ type: "text", text: "partial" }]);
-		const component = new AssistantMessageComponent(undefined, false, undefined, "Thinking...", 1, [
+		const component = new AssistantMessageComponent(undefined, false, undefined, 1, [
 			(markdown, context) => {
 				streamingStates.push(context.isStreaming);
 				return context.isStreaming ? markdown : `${markdown} transformed`;
@@ -161,7 +172,6 @@ describe("AssistantMessageComponent", () => {
 			createAssistantMessage([{ type: "text", text: "answer" }]),
 			false,
 			undefined,
-			"Thinking...",
 			1,
 			[
 				(markdown, context) => {
@@ -184,7 +194,6 @@ describe("AssistantMessageComponent", () => {
 			createAssistantMessage([{ type: "text", text: "still visible" }]),
 			false,
 			undefined,
-			"Thinking...",
 			1,
 			[
 				(markdown) => {
@@ -212,7 +221,7 @@ describe("AssistantMessageComponent", () => {
 			{ type: "text", text: "answer" },
 			{ type: "thinking", thinking: "reasoning" },
 		]);
-		const component = new AssistantMessageComponent(message, false, undefined, "Thinking...", 1, [
+		const component = new AssistantMessageComponent(message, false, undefined, 1, [
 			(markdown, { messageType }) => {
 				return `${messageType}:${markdown}`;
 			},

@@ -14,6 +14,8 @@ export class CustomEditor extends Editor {
 	public onPasteImage?: () => void;
 	/** Handler for extension-registered shortcuts. Returns true if handled. */
 	public onExtensionShortcut?: (data: string) => boolean;
+	/** Handler for vertical navigation while expand mode is active. Returns true if handled. */
+	public onNavigateVertical?: (direction: -1 | 1) => boolean;
 
 	constructor(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager, options?: EditorOptions) {
 		super(tui, theme, options);
@@ -85,6 +87,15 @@ export class CustomEditor extends Editor {
 		}
 
 		// Pass to parent for editor handling
+		if (this.onNavigateVertical) {
+			if (this.keybindings.matches(data, "tui.editor.cursorUp")) {
+				if (this.onNavigateVertical(-1)) return;
+			}
+			if (this.keybindings.matches(data, "tui.editor.cursorDown")) {
+				if (this.onNavigateVertical(1)) return;
+			}
+		}
+
 		super.handleInput(data);
 	}
 }
