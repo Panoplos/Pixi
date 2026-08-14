@@ -11,6 +11,8 @@
 - Added live thinking timing: while thinking is hidden, each thinking run shows `Thinking...` while streaming (on the `thinking_start` marker) and flips in place to `Thought for 4.2s` / `1m 05s` when it finishes (`thinking_end`). The timed line persists in the chat; restored sessions omit thinking entirely.
 - Added a default prompt guideline that the agent must issue tool calls directly without announcing or narrating them first. (The default prompt only; custom prompts are unchanged.)
 - Added a `❯ ` prefix to the interactive input box, colored via the new optional `promptPrefix` theme token (falls back to `accent` when omitted).
+- Added the `defaultTools` setting for configuring the initial built-in tool selection globally or per project.
+- Added `--use-theme <name[/name]>` to choose an initial per-run interactive theme without changing saved settings ([#7722](https://github.com/earendil-works/pi/pull/7722) by [@rwachtler](https://github.com/rwachtler)).
 
 ### Changed
 
@@ -20,16 +22,21 @@
 - Reworked tool block layout: headers now render as `[bold]Tool[/bold](path|command)` (bash prints the command multi-line, indented under the header), tool output bodies use a `└ ` joint with continuation lines aligned to it, `write` bodies keep the language syntax theme and gain line numbers, and `edit` shows a line-numbered diff with a `└ Added/Removed N lines (and Removed N lines)` summary and full-width dark-red/dark-green row backgrounds (white text) via new `toolDiffAddedBg`/`toolDiffRemovedBg`/`toolDiffText` theme tokens.
 - Collapsed the interactive footer to a single status line combining cwd/branch, cache hit rate, context usage, the auto-compaction indicator, and the right-aligned model/effort info, with a themeable cyan/yellow context-usage threshold at 80%. Token counts and cost are no longer shown in the built-in footer.
 - Added optional `footer*` theme color tokens for the footer status line, documented in `docs/themes.md`.
+- Changed inherited Kimi Coding requests to use pi's runtime `User-Agent` header.
 - Replaced the inherited Mistral SDK transport with a native Chat Completions HTTP stream, eliminating its generated client and schema runtime overhead.
 - Documented the generic `AI_AGENT=pi` process marker and how it differs from `PI_CODING_AGENT=true` ([#7747](https://github.com/earendil-works/pi/issues/7747)).
 
 ### Fixed
 
+- Fixed managed-tool downloads delaying TUI startup and hiding diagnostics in fullscreen mode by mounting the TUI first and showing download progress and warnings inside it.
+- Fixed opening a model selector immediately after startup cancelling and restarting the in-progress model catalog refresh.
 - Fixed inherited GitHub Copilot login triggering API rate limits while enabling model policies by limiting concurrent policy updates ([#6187](https://github.com/earendil-works/pi/issues/6187)).
 - Fixed fullscreen transcript search snapping back to the current match during manual scrolling and fragmented mouse input leaking into the search query.
 - Fixed the live `Thinking...` indicator staying active while the assistant message streams when no `thinking_end` marker arrives (e.g. providers that only emit thinking deltas); it now flips to `Thought for Ns` once visible text or tool content starts streaming, and any dangling indicator is finalized at the end of the run.
 - Fixed rapid `Up`/`Down` expand-mode navigation stacking a new status box under the previous one: expand-status toasts now replace the previous toast instead of enqueuing/appending (a single in-place toast in regular mode, and a replace-style flash in fullscreen). Also fixed the fullscreen flash/toast path being unreachable because the `instanceof TuiAltScreen` check ran against the UI proxy reference instead of the real renderer.
 - Fixed inherited required LaTeX arguments starting on a new line being parsed as empty ([#7760](https://github.com/earendil-works/pi/issues/7760)).
+- Updated the transitive `nanoid` development dependency to address a denial-of-service vulnerability.
+- Fixed fallback rendering for extension tool results to collapse long output and honor tool expansion ([#7979](https://github.com/earendil-works/pi/issues/7979)).
 
 ## [0.84.1] - 2026-08-07
 
