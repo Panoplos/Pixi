@@ -55,6 +55,7 @@ import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth
 import { type BashResult, executeBashWithOperations } from "./bash-executor.ts";
 import {
 	type CompactionResult,
+	type CompactionSettings,
 	calculateContextTokens,
 	collectEntriesForBranchSummary,
 	compact,
@@ -1873,6 +1874,7 @@ export class AgentSession {
 					env,
 					this.settingsManager.getRetrySettings(),
 					this._summarizationRetryCallbacks({ source: "compaction", reason: "manual" }),
+					undefined, // sessionId
 				);
 				summary = result.summary;
 				firstKeptEntryId = result.firstKeptEntryId;
@@ -1985,7 +1987,7 @@ export class AgentSession {
 		// Skip if message was aborted (user cancelled) - unless skipAbortedCheck is false
 		if (skipAbortedCheck && assistantMessage.stopReason === "aborted") return false;
 
-		const contextWindow = this.model?.contextWindow ?? 0;
+		const contextWindow = this.getEffectiveContextWindow();
 
 		// Skip overflow check if the message came from a different model.
 		// This handles the case where user switched from a smaller-context model (e.g. opus)
@@ -2065,10 +2067,22 @@ export class AgentSession {
 		} else {
 			contextTokens = directContextTokens;
 		}
-		if (shouldCompact(contextTokens, contextWindow, settings)) {
+		if (shouldCompact(contextTokens, contextWindow, this._effectiveCompactionSettings(settings, contextWindow))) {
 			return await this._runAutoCompaction("threshold", false);
 		}
 		return false;
+	}
+
+	/**
+	 * Apply the per-model compaction boundary: when set, the trigger threshold is
+	 * the boundary itself (absolute tokens) instead of `contextWindow - reserveTokens`.
+	 */
+	private _effectiveCompactionSettings(settings: CompactionSettings, contextWindow: number): CompactionSettings {
+		const model = this.model;
+		if (!model) return settings;
+		const boundary = this.settingsManager.getModelContextSettings(model.provider, model.id).compactionBoundary;
+		if (boundary === undefined) return settings;
+		return { ...settings, reserveTokens: Math.max(0, contextWindow - boundary) };
 	}
 
 	/**
@@ -2161,6 +2175,7 @@ export class AgentSession {
 					env,
 					this.settingsManager.getRetrySettings(),
 					this._summarizationRetryCallbacks({ source: "compaction", reason }),
+					undefined, // sessionId
 				);
 				summary = compactResult.summary;
 				firstKeptEntryId = compactResult.firstKeptEntryId;
@@ -3197,11 +3212,24 @@ export class AgentSession {
 		};
 	}
 
+	/**
+	 * Effective context window for the current model: the per-model `maxContext`
+	 * cap (clamped to the model spec) when configured, otherwise the model spec.
+	 */
+	getEffectiveContextWindow(): number {
+		const model = this.model;
+		if (!model) return 0;
+		const spec = model.contextWindow ?? 0;
+		const config = this.settingsManager.getModelContextSettings(model.provider, model.id);
+		if (config.maxContext === undefined) return spec;
+		return Math.min(config.maxContext, spec);
+	}
+
 	getContextUsage(): ContextUsage | undefined {
 		const model = this.model;
 		if (!model) return undefined;
 
-		const contextWindow = model.contextWindow ?? 0;
+		const contextWindow = this.getEffectiveContextWindow();
 		if (contextWindow <= 0) return undefined;
 
 		// After compaction, the last assistant usage reflects pre-compaction context size.

@@ -2,8 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Grouped the `/model` selector list by lab (the `<lab>/` prefix of a model id, falling back to the provider), sorted by group and then by model id within each group.
+- Added the `/thinking` command (with `/effort` as an alias) to select the reasoning/thinking level supported by the current model; the selection updates the footer status line.
+- Added the `/context` command to configure per-model context settings: a max context window (capped at the model spec) and a compaction boundary (absolute token count that triggers auto-compaction, must be below max context). Token input accepts `NNNk`/`NNNm` shorthand (with a decimal point, e.g. `1.5k`) and ignores `,` and whitespace (and `.` as a thousands separator for plain counts).
+
 ### Fixed
 
+- Fixed the footer hiding the reasoning/effort level for models whose support is derived from the thinking-level map rather than a top-level reasoning flag.
 - Fixed Z.AI Coding Plan defaults referencing the removed GLM-5.1 model ([#8096](https://github.com/earendil-works/pi/issues/8096)).
 
 ## [0.84.2] - 2026-08-14

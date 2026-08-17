@@ -97,7 +97,7 @@ export class FooterComponent implements Component {
 		// Calculate context usage from session (handles compaction correctly).
 		// After compaction, tokens are unknown until the next LLM response.
 		const contextUsage = this.session.getContextUsage();
-		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
+		const contextWindow = contextUsage?.contextWindow ?? this.session.getEffectiveContextWindow();
 		const contextPercentValue = contextUsage?.percent ?? 0;
 		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
 
@@ -148,9 +148,10 @@ export class FooterComponent implements Component {
 		// Calculate available space for padding (minimum 2 spaces between stats and model)
 		const minPadding = 2;
 
-		// Add thinking level indicator if model supports reasoning
+		// Add thinking level indicator if the model supports reasoning levels.
+		const supportsThinking = this.session.getAvailableThinkingLevels().length > 1;
 		let rightSideWithoutProvider = modelName;
-		if (state.model?.reasoning) {
+		if (supportsThinking) {
 			const thinkingLevel = state.thinkingLevel || "off";
 			rightSideWithoutProvider =
 				thinkingLevel === "off" ? `${modelName} • thinking off` : `${modelName} • ${thinkingLevel}`;

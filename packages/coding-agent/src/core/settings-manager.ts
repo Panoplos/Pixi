@@ -15,6 +15,14 @@ export interface CompactionSettings {
 	keepRecentTokens?: number; // default: 20000
 }
 
+/** Per-model context configuration stored under `Settings.modelContexts`. */
+export interface ModelContextSettings {
+	/** Effective context window cap (tokens), clamped to the model spec. */
+	maxContext?: number;
+	/** Absolute context-usage token count that triggers auto-compaction. */
+	compactionBoundary?: number;
+}
+
 export interface BranchSummarySettings {
 	reserveTokens?: number; // default: 16384 (tokens reserved for prompt + LLM response)
 	skipPrompt?: boolean; // default: false - when true, skips "Summarize branch?" prompt and defaults to no summary
@@ -137,6 +145,7 @@ export interface Settings {
 	tuiMode?: TuiMode; // default: "regular"
 	fullscreenExitOutput?: FullscreenExitOutput; // default: "transcript"; no effect in regular TUI mode
 	fullscreenScrollbar?: ScrollViewScrollbar; // default: "auto"; no effect in regular TUI mode
+	modelContexts?: Record<string, ModelContextSettings>; // Per-model context config keyed by `${provider}/${id}`
 }
 
 function isMergeableObject(value: unknown): value is Record<string, unknown> {
@@ -705,6 +714,30 @@ export class SettingsManager {
 		this.globalSettings.defaultModel = modelId;
 		this.markModified("defaultProvider");
 		this.markModified("defaultModel");
+		this.save();
+	}
+
+	getModelContextSettings(provider: string, modelId: string): ModelContextSettings {
+		return this.settings.modelContexts?.[`${provider}/${modelId}`] ?? {};
+	}
+
+	/** Set (or clear, when undefined) per-model context config fields. */
+	setModelContextSettings(provider: string, modelId: string, update: Partial<ModelContextSettings>): void {
+		if (!this.globalSettings.modelContexts) {
+			this.globalSettings.modelContexts = {};
+		}
+		const key = `${provider}/${modelId}`;
+		const existing = this.globalSettings.modelContexts[key] ?? {};
+		const merged: ModelContextSettings = { ...existing, ...update };
+		for (const [field, value] of Object.entries(merged)) {
+			if (value === undefined) delete merged[field as keyof ModelContextSettings];
+		}
+		if (Object.keys(merged).length === 0) {
+			delete this.globalSettings.modelContexts[key];
+		} else {
+			this.globalSettings.modelContexts[key] = merged;
+		}
+		this.markModified("modelContexts", key);
 		this.save();
 	}
 

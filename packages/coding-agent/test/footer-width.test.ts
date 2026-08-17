@@ -79,6 +79,9 @@ function createSession(options: {
 			getCwd: () => "/tmp/project",
 		},
 		getContextUsage: () => ({ contextWindow: 200_000, percent: 12.3 }),
+		getEffectiveContextWindow: () => 200_000,
+		getAvailableThinkingLevels: () =>
+			options.reasoning ? ["off", "minimal", "low", "medium", "high", "xhigh", "max"] : ["off"],
 		modelRuntime: {
 			isUsingSubscription: () => options.usingSubscription ?? false,
 		},
