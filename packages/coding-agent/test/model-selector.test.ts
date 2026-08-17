@@ -1,6 +1,6 @@
 import type { TUI } from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { ModelSelectorComponent } from "../src/modes/interactive/components/model-selector.ts";
+import { ModelSelectorComponent, modelLab } from "../src/modes/interactive/components/model-selector.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 import { createHarness, type Harness } from "./suite/harness.ts";
@@ -8,6 +8,14 @@ import { createHarness, type Harness } from "./suite/harness.ts";
 function createFakeTui(): TUI {
 	return { requestRender: () => {} } as unknown as TUI;
 }
+
+describe("modelLab", () => {
+	it("uses the <lab>/ prefix of the id, falling back to the provider", () => {
+		expect(modelLab({ id: "deepseek-ai/DeepSeek-V4-Pro-0813", provider: "deepinfra" } as never)).toBe("deepseek-ai");
+		expect(modelLab({ id: "meta-llama/Llama-3.3", provider: "deepinfra" } as never)).toBe("meta-llama");
+		expect(modelLab({ id: "deepseek-chat", provider: "deepseek" } as never)).toBe("deepseek");
+	});
+});
 
 describe("model selector", () => {
 	let harness: Harness | undefined;

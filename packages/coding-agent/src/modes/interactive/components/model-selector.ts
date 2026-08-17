@@ -21,11 +21,18 @@ interface ModelItem {
 	provider: string;
 	id: string;
 	model: Model<any>;
+	/** Grouping key: the `<lab>/` prefix of the id, or the provider when there is none. */
+	lab: string;
 }
 
 interface ScopedModelItem {
 	model: Model<any>;
 	thinkingLevel?: string;
+}
+
+/** Grouping key for the model list: the `<lab>/` prefix of the id, or the provider when there is none. */
+export function modelLab(model: Model<any>): string {
+	return model.id.includes("/") ? model.id.slice(0, model.id.indexOf("/")) : model.provider;
 }
 
 type ModelScope = "all" | "scoped";
@@ -142,6 +149,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			provider: model.provider,
 			id: model.id,
 			model,
+			lab: modelLab(model),
 		}));
 		this.allModels = this.sortModels(models);
 		this.scopedModels = this.scopedModels.map((scoped) => {
@@ -152,6 +160,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			provider: scoped.model.provider,
 			id: scoped.model.id,
 			model: scoped.model,
+			lab: modelLab(scoped.model),
 		}));
 		this.activeModels = this.scope === "scoped" ? this.scopedModelItems : this.allModels;
 		this.filteredModels = this.activeModels;
@@ -209,13 +218,15 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 	private sortModels(models: ModelItem[]): ModelItem[] {
 		const sorted = [...models];
-		// Sort: current model first, then by provider
+		// Sort: current model first, then by lab group, then by id within the group.
 		sorted.sort((a, b) => {
 			const aIsCurrent = modelsAreEqual(this.currentModel, a.model);
 			const bIsCurrent = modelsAreEqual(this.currentModel, b.model);
 			if (aIsCurrent && !bIsCurrent) return -1;
 			if (!aIsCurrent && bIsCurrent) return 1;
-			return a.provider.localeCompare(b.provider);
+			const labOrder = a.lab.localeCompare(b.lab, undefined, { sensitivity: "base" });
+			if (labOrder !== 0) return labOrder;
+			return a.id.localeCompare(b.id, undefined, { sensitivity: "base" });
 		});
 		return sorted;
 	}
@@ -258,19 +269,44 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private updateList(): void {
 		this.listContainer.clear();
 
-		const maxVisible = 10;
-		const startIndex = Math.max(
-			0,
-			Math.min(this.selectedIndex - Math.floor(maxVisible / 2), this.filteredModels.length - maxVisible),
-		);
-		const endIndex = Math.min(startIndex + maxVisible, this.filteredModels.length);
-
-		// Show visible slice of filtered models
-		for (let i = startIndex; i < endIndex; i++) {
+		// Build a flat render list: a blank spacer precedes each lab group header
+		// (except the first), so navigation stays mapped to the underlying model index.
+		type Row = { kind: "gap" } | { kind: "header"; lab: string } | { kind: "item"; index: number };
+		const rows: Row[] = [];
+		let lastLab: string | undefined;
+		for (let i = 0; i < this.filteredModels.length; i++) {
 			const item = this.filteredModels[i];
-			if (!item) continue;
+			if (item.lab !== lastLab) {
+				if (lastLab !== undefined) rows.push({ kind: "gap" });
+				rows.push({ kind: "header", lab: item.lab });
+				lastLab = item.lab;
+			}
+			rows.push({ kind: "item", index: i });
+		}
 
-			const isSelected = i === this.selectedIndex;
+		const selectedRow = rows.findIndex((row) => row.kind === "item" && row.index === this.selectedIndex);
+
+		const maxVisible = 10;
+		const startRow = Math.max(0, Math.min(selectedRow - Math.floor(maxVisible / 2), rows.length - maxVisible));
+		const endRow = Math.min(startRow + maxVisible, rows.length);
+
+		for (let r = startRow; r < endRow; r++) {
+			const row = rows[r];
+			if (!row) continue;
+
+			if (row.kind === "gap") {
+				this.listContainer.addChild(new Spacer(1));
+				continue;
+			}
+
+			if (row.kind === "header") {
+				this.listContainer.addChild(new Text(theme.fg("muted", `  ${theme.bold(row.lab)}`), 0, 0));
+				continue;
+			}
+
+			const item = this.filteredModels[row.index];
+			if (!item) continue;
+			const isSelected = row.index === this.selectedIndex;
 			const isCurrent = modelsAreEqual(this.currentModel, item.model);
 
 			let line = "";
@@ -291,7 +327,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		}
 
 		// Add scroll indicator if needed
-		if (startIndex > 0 || endIndex < this.filteredModels.length) {
+		if (startRow > 0 || endRow < rows.length) {
 			const scrollInfo = theme.fg("muted", `  (${this.selectedIndex + 1}/${this.filteredModels.length})`);
 			this.listContainer.addChild(new Text(scrollInfo, 0, 0));
 		}

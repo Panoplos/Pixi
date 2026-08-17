@@ -128,6 +128,7 @@ import { FooterComponent, formatTokens } from "./components/footer.ts";
 import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.ts";
 import { LoginDialogComponent } from "./components/login-dialog.ts";
 import { createMermaidMarkdownTransformer } from "./components/mermaid.ts";
+import { ContextConfigComponent, EffortSelectorComponent } from "./components/model-config-selectors.ts";
 import { ModelSelectorComponent } from "./components/model-selector.ts";
 import {
 	type AuthSelectorProvider,
@@ -2919,6 +2920,16 @@ export class InteractiveMode {
 				await this.handleModelCommand(searchTerm);
 				return;
 			}
+			if (text === "/thinking" || text === "/effort") {
+				this.editor.setText("");
+				this.handleThinkingCommand();
+				return;
+			}
+			if (text === "/context") {
+				this.editor.setText("");
+				this.handleContextCommand();
+				return;
+			}
 			if (text === "/export" || text.startsWith("/export ")) {
 				await this.handleExportCommand(text);
 				this.editor.setText("");
@@ -4067,6 +4078,61 @@ export class InteractiveMode {
 		} catch (error) {
 			this.showError(error instanceof Error ? error.message : String(error));
 		}
+	}
+
+	private handleThinkingCommand(): void {
+		if (!this.session.model) {
+			this.showStatus("No model selected");
+			return;
+		}
+		const levels = this.session.getAvailableThinkingLevels();
+		if (levels.length <= 1) {
+			this.showStatus("Current model does not support thinking");
+			return;
+		}
+		this.showSelector((done) => {
+			const selector = new EffortSelectorComponent(
+				levels,
+				this.session.thinkingLevel,
+				(level) => {
+					this.session.setThinkingLevel(level);
+					this.footer.invalidate();
+					this.updateEditorBorderColor();
+					done();
+					this.showStatus(`Thinking level: ${level}`);
+				},
+				() => {
+					done();
+					this.ui.requestRender();
+				},
+			);
+			return { component: selector, focus: selector };
+		});
+	}
+
+	private handleContextCommand(): void {
+		const model = this.session.model;
+		if (!model) {
+			this.showStatus("No model selected");
+			return;
+		}
+		const spec = model.contextWindow ?? 0;
+		const current = this.settingsManager.getModelContextSettings(model.provider, model.id);
+		this.showSelector((done) => {
+			const selector = new ContextConfigComponent(
+				{ maxContext: current.maxContext, compactionBoundary: current.compactionBoundary },
+				spec,
+				(next) => {
+					this.settingsManager.setModelContextSettings(model.provider, model.id, next);
+					this.footer.invalidate();
+				},
+				() => {
+					done();
+					this.ui.requestRender();
+				},
+			);
+			return { component: selector, focus: selector };
+		});
 	}
 
 	private toggleToolOutputExpansion(): void {
