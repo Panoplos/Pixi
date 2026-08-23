@@ -102,7 +102,7 @@ import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.ts
 import type { ResourceExtensionPaths, ResourceLoader } from "./resource-loader.ts";
 import type { BranchSummaryEntry, CompactionEntry, SessionEntry, SessionManager } from "./session-manager.ts";
 import { CURRENT_SESSION_VERSION, getLatestCompactionEntry, type SessionHeader } from "./session-manager.ts";
-import type { SettingsManager } from "./settings-manager.ts";
+import { resolveModelContextSettings, type SettingsManager } from "./settings-manager.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.ts";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-prompt.ts";
@@ -2080,9 +2080,12 @@ export class AgentSession {
 	private _effectiveCompactionSettings(settings: CompactionSettings, contextWindow: number): CompactionSettings {
 		const model = this.model;
 		if (!model) return settings;
-		const boundary = this.settingsManager.getModelContextSettings(model.provider, model.id).compactionBoundary;
+		const boundary = resolveModelContextSettings(
+			this.settingsManager.getModelContextSettings(model.provider, model.id),
+			model.contextWindow ?? 0,
+		).compactionBoundary;
 		if (boundary === undefined) return settings;
-		return { ...settings, reserveTokens: Math.max(0, contextWindow - boundary) };
+		return { ...settings, reserveTokens: contextWindow - boundary };
 	}
 
 	/**
@@ -3219,10 +3222,10 @@ export class AgentSession {
 	getEffectiveContextWindow(): number {
 		const model = this.model;
 		if (!model) return 0;
-		const spec = model.contextWindow ?? 0;
-		const config = this.settingsManager.getModelContextSettings(model.provider, model.id);
-		if (config.maxContext === undefined) return spec;
-		return Math.min(config.maxContext, spec);
+		return resolveModelContextSettings(
+			this.settingsManager.getModelContextSettings(model.provider, model.id),
+			model.contextWindow ?? 0,
+		).contextWindow;
 	}
 
 	getContextUsage(): ContextUsage | undefined {

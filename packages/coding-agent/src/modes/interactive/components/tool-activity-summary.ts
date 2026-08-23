@@ -1,6 +1,13 @@
 import { Container, Text, type TUI } from "@earendil-works/pi-tui";
-import { type ActivityToolCall, summarizeSection } from "../../../core/tool-activity-summary.ts";
+import {
+	type ActivityToolCall,
+	type ActivityToolResult,
+	extractCommitHash,
+	isGitCommitCommand,
+	summarizeSection,
+} from "../../../core/tool-activity-summary.ts";
 import { theme } from "../theme/theme.ts";
+import { keyHint } from "./keybinding-hints.ts";
 import type { ToolExecutionComponent } from "./tool-execution.ts";
 
 export interface ToolActivitySummaryOptions {
@@ -25,7 +32,7 @@ export class ToolActivitySummaryComponent extends Container {
 	private readonly createExecution: (toolName: string, toolCallId: string, args: unknown) => ToolExecutionComponent;
 	private readonly calls = new Map<string, { toolName: string; args: unknown }>();
 	private readonly executions = new Map<string, ToolExecutionComponent>();
-	private readonly results = new Map<string, string>();
+	private readonly results = new Map<string, ActivityToolResult>();
 	private readonly order: string[] = [];
 	private expanded: boolean;
 	private collapseHint = "";
@@ -53,11 +60,6 @@ export class ToolActivitySummaryComponent extends Container {
 		return lines;
 	}
 
-	/** Tool call ids in this section, in order. */
-	get toolCallIds(): string[] {
-		return this.order;
-	}
-
 	setExpanded(expanded: boolean): void {
 		this.expanded = expanded;
 		for (const execution of this.executions.values()) {
@@ -66,8 +68,8 @@ export class ToolActivitySummaryComponent extends Container {
 		this.refreshSummary();
 	}
 
-	/** Hint appended to the collapsed summary line (e.g. "(ctrl + o to expand)"). */
-	setCollapseHint(hint: string): void {
+	setShowCollapseHint(show: boolean): void {
+		const hint = show ? keyHint("app.tools.expand", "to expand") : "";
 		if (hint === this.collapseHint) return;
 		this.collapseHint = hint;
 		this.refreshSummary();
@@ -97,16 +99,6 @@ export class ToolActivitySummaryComponent extends Container {
 		return execution;
 	}
 
-	markExecutionStarted(toolCallId: string): void {
-		this.executions.get(toolCallId)?.markExecutionStarted();
-		this.refreshSummary();
-	}
-
-	setArgsComplete(toolCallId: string): void {
-		this.executions.get(toolCallId)?.setArgsComplete();
-		this.refreshSummary();
-	}
-
 	updateResult(
 		toolCallId: string,
 		result: {
@@ -117,17 +109,27 @@ export class ToolActivitySummaryComponent extends Container {
 		isPartial = false,
 	): void {
 		this.executions.get(toolCallId)?.updateResult(result, isPartial);
-		const text = result.content
-			.filter((c) => c.type === "text" && typeof c.text === "string")
-			.map((c) => c.text as string)
-			.join("\n");
-		this.results.set(toolCallId, text);
+		const call = this.calls.get(toolCallId);
+		if (
+			call?.toolName === "bash" &&
+			isGitCommitCommand((call.args as Record<string, unknown> | undefined)?.command)
+		) {
+			const text = result.content
+				.filter((c): c is typeof c & { text: string } => c.type === "text" && typeof c.text === "string")
+				.map((c) => c.text)
+				.join("\n");
+			this.results.set(toolCallId, {
+				isError: result.isError,
+				isPartial,
+				commitHash: isPartial || result.isError ? undefined : extractCommitHash(text),
+			});
+		}
 		this.refreshSummary();
 	}
 
 	private refreshSummary(): void {
 		const calls: ActivityToolCall[] = [];
-		const results: Record<string, string> = {};
+		const results: Record<string, ActivityToolResult> = {};
 		for (const id of this.order) {
 			const call = this.calls.get(id);
 			if (!call) continue;
@@ -140,7 +142,7 @@ export class ToolActivitySummaryComponent extends Container {
 		const phrase = summarizeSection(calls, { results });
 		const rendered =
 			phrase && !this.expanded && this.collapseHint
-				? `${this.boldCounts(phrase)} (${theme.fg("muted", `${theme.bold("ctrl+o")} to expand`)})`
+				? `${this.boldCounts(phrase)} (${this.collapseHint})`
 				: this.boldCounts(phrase ?? "");
 		this.summaryText.setText(theme.fg("toolTitle", rendered));
 		this.ui.requestRender();

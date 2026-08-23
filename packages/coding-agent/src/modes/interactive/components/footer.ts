@@ -85,12 +85,13 @@ export class FooterComponent implements Component {
 
 		// Track the cache hit rate of the most recent assistant message.
 		let latestCacheHitRate: number | undefined;
-		for (const entry of this.session.sessionManager.getEntries()) {
-			if (entry.type === "message" && entry.message.role === "assistant") {
-				const latestPromptTokens =
-					entry.message.usage.input + entry.message.usage.cacheRead + entry.message.usage.cacheWrite;
+		for (let i = state.messages.length - 1; i >= 0; i--) {
+			const message = state.messages[i];
+			if (message.role === "assistant") {
+				const latestPromptTokens = message.usage.input + message.usage.cacheRead + message.usage.cacheWrite;
 				latestCacheHitRate =
-					latestPromptTokens > 0 ? (entry.message.usage.cacheRead / latestPromptTokens) * 100 : undefined;
+					latestPromptTokens > 0 ? (message.usage.cacheRead / latestPromptTokens) * 100 : undefined;
+				break;
 			}
 		}
 

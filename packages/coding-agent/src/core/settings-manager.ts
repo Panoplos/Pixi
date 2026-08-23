@@ -23,6 +23,50 @@ export interface ModelContextSettings {
 	compactionBoundary?: number;
 }
 
+export interface ResolvedModelContextSettings {
+	contextWindow: number;
+	compactionBoundary?: number;
+}
+
+export function resolveModelContextSettings(
+	settings: ModelContextSettings,
+	modelContextWindow: number,
+): ResolvedModelContextSettings {
+	const modelLimit = Number.isSafeInteger(modelContextWindow) && modelContextWindow > 0 ? modelContextWindow : 0;
+	const configuredLimit = settings.maxContext;
+	const contextWindow =
+		Number.isSafeInteger(configuredLimit) && configuredLimit !== undefined && configuredLimit > 0
+			? Math.min(configuredLimit, modelLimit)
+			: modelLimit;
+	const boundary = settings.compactionBoundary;
+	return {
+		contextWindow,
+		compactionBoundary:
+			Number.isSafeInteger(boundary) && boundary !== undefined && boundary > 0 && boundary < contextWindow
+				? boundary
+				: undefined,
+	};
+}
+
+export function validateModelContextSettings(
+	settings: ModelContextSettings,
+	modelContextWindow: number,
+): string | undefined {
+	if (!Number.isSafeInteger(modelContextWindow) || modelContextWindow <= 0) {
+		return "The current model does not declare a valid context window.";
+	}
+	const max = settings.maxContext ?? modelContextWindow;
+	if (!Number.isSafeInteger(max) || max <= 0) return "Max context must be a positive whole number.";
+	if (max > modelContextWindow) return `Max context must be at most the model spec (${modelContextWindow}).`;
+	const boundary = settings.compactionBoundary;
+	if (boundary === undefined) return undefined;
+	if (!Number.isSafeInteger(boundary) || boundary <= 0) {
+		return "Compaction boundary must be a positive whole number.";
+	}
+	if (boundary >= max) return `Compaction boundary must be less than max context (${max}).`;
+	return undefined;
+}
+
 export interface BranchSummarySettings {
 	reserveTokens?: number; // default: 16384 (tokens reserved for prompt + LLM response)
 	skipPrompt?: boolean; // default: false - when true, skips "Summarize branch?" prompt and defaults to no summary

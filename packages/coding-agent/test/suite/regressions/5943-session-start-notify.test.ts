@@ -20,6 +20,7 @@ function createUiContext(
 		setWorkingMessage: () => {},
 		setWorkingVisible: () => {},
 		setWorkingIndicator: () => {},
+		setThinkingIndicator: () => {},
 		setHiddenThinkingLabel: () => {},
 		setWidget: () => {},
 		setFooter: () => {},

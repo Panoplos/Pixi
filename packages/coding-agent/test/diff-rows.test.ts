@@ -1,3 +1,4 @@
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, test } from "vitest";
 import {
 	BODY_JOINT,
@@ -7,7 +8,6 @@ import {
 	parseDiffRows,
 } from "../src/modes/interactive/components/diff.ts";
 import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
-import { stripAnsi } from "../src/utils/ansi.ts";
 
 describe("line-numbered tool diff rows (Phase B)", () => {
 	test("parseDiffRows extracts kind, line number, and content", () => {
@@ -27,7 +27,7 @@ describe("line-numbered tool diff rows (Phase B)", () => {
 		initTheme("dark");
 		const component = new DiffRowsComponent([{ kind: "context", lineNum: "1", content: "plain" }]);
 		const [line] = component.render(20);
-		expect(stripAnsi(line).length).toBe(20);
+		expect(visibleWidth(line)).toBe(20);
 		expect(line).not.toContain(theme.getBgAnsi("toolDiffAddedBg"));
 		expect(line).not.toContain(theme.getBgAnsi("toolDiffRemovedBg"));
 	});
@@ -37,7 +37,7 @@ describe("line-numbered tool diff rows (Phase B)", () => {
 		const component = new DiffRowsComponent([{ kind: "removed", lineNum: "7", content: "gone" }]);
 		const [line] = component.render(16);
 		// background fills to the terminal width, starting after the joint indent
-		expect(stripAnsi(line).length).toBe(16);
+		expect(visibleWidth(line)).toBe(16);
 		expect(line).toContain(theme.getBgAnsi("toolDiffRemovedBg"));
 		expect(line).not.toContain(theme.getBgAnsi("toolDiffAddedBg"));
 		expect(line).toContain(theme.getFgAnsi("toolDiffText"));
@@ -47,7 +47,7 @@ describe("line-numbered tool diff rows (Phase B)", () => {
 		initTheme("dark");
 		const component = new DiffRowsComponent([{ kind: "added", lineNum: "8", content: "new" }]);
 		const [line] = component.render(16);
-		expect(stripAnsi(line).length).toBe(16);
+		expect(visibleWidth(line)).toBe(16);
 		expect(line).toContain(theme.getBgAnsi("toolDiffAddedBg"));
 		expect(line).not.toContain(theme.getBgAnsi("toolDiffRemovedBg"));
 		expect(line).toContain(theme.getFgAnsi("toolDiffText"));
@@ -60,5 +60,14 @@ describe("line-numbered tool diff rows (Phase B)", () => {
 		const stripped = line.replace(/\x1b\[[0-9;]*m/g, "");
 		expect(stripped.startsWith(" ".repeat(BODY_JOINT_WIDTH))).toBe(true);
 		expect(BODY_JOINT).toBe("└ ");
+	});
+
+	test("truncates ANSI-styled wide content to the requested terminal width", () => {
+		initTheme("dark");
+		const component = new DiffRowsComponent([{ kind: "added", lineNum: "1", content: "한글🙂".repeat(20) }]);
+		for (const width of [1, 2, 9, 20]) {
+			const [line] = component.render(width);
+			expect(visibleWidth(line)).toBe(width);
+		}
 	});
 });

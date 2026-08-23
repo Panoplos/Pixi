@@ -131,9 +131,9 @@ export class AssistantMessageComponent extends Container {
 					.some((c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()));
 
 				if (this.hideThinkingBlock) {
-					// Thinking is hidden. The live timed indicator (Thinking... -> Thought
-					// for Ns) is driven from interactive-mode's stream markers; a rebuilt
-					// session shows no thinking at all, so render nothing here.
+					// Thinking is hidden. Interactive mode uses stream markers to show a
+					// transient status and append its completed duration; restored sessions
+					// render neither.
 					continue;
 				} else {
 					// Render each run of thinking blocks as one Markdown section.

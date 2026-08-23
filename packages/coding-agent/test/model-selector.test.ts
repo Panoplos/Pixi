@@ -54,4 +54,27 @@ describe("model selector", () => {
 			expect(rendered).toContain("Could not refresh 2 model catalogs (openai, anthropic); showing cached models.");
 		});
 	});
+
+	it("keeps each lab contiguous while putting the current model first", () => {
+		type SortItem = {
+			provider: string;
+			id: string;
+			model: { provider: string; id: string };
+			lab: string;
+		};
+		const current = { provider: "host", id: "zoo/current" };
+		const items = [
+			{ provider: "host", id: "zoo/other", model: { provider: "host", id: "zoo/other" }, lab: "zoo" },
+			{ provider: "host", id: "alpha/model", model: { provider: "host", id: "alpha/model" }, lab: "alpha" },
+			{ provider: "host", id: "zoo/current", model: current, lab: "zoo" },
+		];
+		const sortModels = (
+			ModelSelectorComponent.prototype as unknown as {
+				sortModels(this: { currentModel: typeof current }, models: SortItem[]): SortItem[];
+			}
+		).sortModels;
+
+		const sorted = sortModels.call({ currentModel: current }, items);
+		expect(sorted.map(({ id }) => id)).toEqual(["zoo/current", "zoo/other", "alpha/model"]);
+	});
 });

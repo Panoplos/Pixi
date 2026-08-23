@@ -211,7 +211,16 @@ All components implement:
 interface Component {
   render(width: number): string[];
   handleInput?(data: string): void;
-  invalidate?(): void;
+  handleClick?(x: number, y: number, width: number): void;
+  handleSelection?(start: ComponentSelectionPoint, end: ComponentSelectionPoint, width: number): boolean;
+  clearSelection?(): void;
+  invalidate(): void;
+}
+
+interface ComponentSelectionPoint {
+  x: number;
+  y: number;
+  boundary?: boolean;
 }
 ```
 
@@ -219,7 +228,10 @@ interface Component {
 |--------|-------------|
 | `render(width)` | Returns an array of strings, one per line. Each line **must not exceed `width`** or the TUI will error. Use `truncateToWidth()` or manual wrapping to ensure this. |
 | `handleInput?(data)` | Called when the component has focus and receives keyboard input. The `data` string contains raw terminal input (may include ANSI escape sequences). |
-| `invalidate?()` | Called to clear any cached render state. Components should re-render from scratch on the next `render()` call. |
+| `handleClick?(x, y, width)` | Called after a primary-button click inside the focused component. Coordinates are component-local terminal cells. |
+| `handleSelection?(start, end, width)` | Called after a primary-button selection inside the focused component. Return `true` when the component owns the selection. |
+| `clearSelection?()` | Called when the TUI clears a component-owned selection. |
+| `invalidate()` | Called to clear any cached render state. Components should re-render from scratch on the next `render()` call. |
 
 The TUI appends a full SGR reset and OSC 8 reset at the end of each rendered line. Styles do not carry across lines. If you emit multi-line text with styling, reapply styles per line or use `wrapTextWithAnsi()` so styles are preserved for each wrapped line.
 

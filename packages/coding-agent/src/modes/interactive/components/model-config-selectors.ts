@@ -1,18 +1,7 @@
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import {
-	Container,
-	Input,
-	type SelectItem,
-	SelectList,
-	type SettingItem,
-	SettingsList,
-	Spacer,
-	Text,
-} from "@earendil-works/pi-tui";
-import type { ModelContextSettings } from "../../../core/settings-manager.ts";
-import { getSelectListTheme, getSettingsListTheme, theme } from "../theme/theme.ts";
+import { Container, Input, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
+import { type ModelContextSettings, validateModelContextSettings } from "../../../core/settings-manager.ts";
+import { getSettingsListTheme, theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { THINKING_DESCRIPTIONS } from "./settings-selector.ts";
 
 /**
  * Parse a user-entered token count. In the `k`/`m` shorthand case a `.` is a
@@ -35,50 +24,11 @@ export function parseTokenCount(input: string): number | undefined {
 	return Number(plain);
 }
 
-/** Effort/reasoning level selector for the current model. */
-export class EffortSelectorComponent extends Container {
-	private selectList: SelectList;
-
-	constructor(
-		levels: readonly ThinkingLevel[],
-		current: ThinkingLevel,
-		onSelect: (level: ThinkingLevel) => void,
-		onCancel: () => void,
-	) {
-		super();
-		this.addChild(new DynamicBorder());
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Effort")), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("muted", "Select the reasoning depth for this model."), 0, 0));
-		this.addChild(new Spacer(1));
-
-		const items: SelectItem[] = levels.map((level) => ({
-			value: level,
-			label: level,
-			description: THINKING_DESCRIPTIONS[level],
-		}));
-		this.selectList = new SelectList(items, Math.min(items.length, 10), getSelectListTheme());
-		const currentIndex = items.findIndex((item) => item.value === current);
-		if (currentIndex !== -1) this.selectList.setSelectedIndex(currentIndex);
-		this.selectList.onSelect = (item) => onSelect(item.value as ThinkingLevel);
-		this.selectList.onCancel = onCancel;
-		this.addChild(this.selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to select · Esc to cancel"), 0, 0));
-		this.addChild(new DynamicBorder());
-	}
-
-	handleInput(data: string): void {
-		this.selectList.handleInput(data);
-	}
-}
-
 interface NumberInputOptions {
 	title: string;
 	prompt: string;
 	initialValue: number | undefined;
-	validate: (value: number) => string | undefined;
+	validate: (value: number | undefined) => string | undefined;
 	onCommit: (value: number | undefined) => void;
 	onCancel: () => void;
 }
@@ -113,12 +63,8 @@ class NumberInputComponent extends Container {
 	}
 
 	private commit(raw: string): void {
-		if (raw.trim() === "") {
-			this.options.onCommit(undefined);
-			return;
-		}
-		const value = parseTokenCount(raw);
-		if (value === undefined) {
+		const value = raw.trim() === "" ? undefined : parseTokenCount(raw);
+		if (raw.trim() !== "" && value === undefined) {
 			this.errorText.setText(theme.fg("error", "Invalid number. Use e.g. 160000, 160k, or 160,000."));
 			return;
 		}
@@ -170,9 +116,8 @@ export class ContextConfigComponent extends Container {
 					new NumberInputComponent({
 						title: "Max context",
 						prompt: `Enter a token count (capped at ${modelSpec}). Empty resets to the model spec.`,
-						initialValue: values.maxContext,
-						validate: (value) =>
-							value > modelSpec ? `Must be at most the model spec (${modelSpec}).` : undefined,
+						initialValue: current.maxContext,
+						validate: (value) => validateModelContextSettings({ ...current, maxContext: value }, modelSpec),
 						onCommit: (value) => {
 							commit({ maxContext: value });
 							done(value === undefined ? "unset" : `${value}`);
@@ -189,12 +134,9 @@ export class ContextConfigComponent extends Container {
 					new NumberInputComponent({
 						title: "Compaction boundary",
 						prompt: `Enter a token count (must be below max context). Empty resets.`,
-						initialValue: values.compactionBoundary,
-						validate: (value) => {
-							const max = current.maxContext ?? modelSpec;
-							if (value >= max) return `Must be less than max context (${max}).`;
-							return undefined;
-						},
+						initialValue: current.compactionBoundary,
+						validate: (value) =>
+							validateModelContextSettings({ ...current, compactionBoundary: value }, modelSpec),
 						onCommit: (value) => {
 							commit({ compactionBoundary: value });
 							done(value === undefined ? "unset" : `${value}`);

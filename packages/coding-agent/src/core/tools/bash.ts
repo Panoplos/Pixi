@@ -241,7 +241,7 @@ function formatBashCall(args: { command?: string; timeout?: number } | undefined
 		.split("\n")
 		.map((line, i) => (i === 0 ? line : " ".repeat(indent) + line))
 		.join("\n");
-	return `${theme.fg("toolTitle", theme.bold("Bash"))}${theme.fg("toolTitle", `(${formatted})`)}` + timeoutSuffix;
+	return `${theme.fg("toolTitle", theme.bold("Bash"))}${theme.fg("toolTitle", `(${formatted})`)}${timeoutSuffix}`;
 }
 
 function rebuildBashResultRenderComponent(

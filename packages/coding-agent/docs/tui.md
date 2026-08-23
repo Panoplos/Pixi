@@ -14,8 +14,17 @@ All components implement:
 interface Component {
   render(width: number): string[];
   handleInput?(data: string): void;
+  handleClick?(x: number, y: number, width: number): void;
+  handleSelection?(start: ComponentSelectionPoint, end: ComponentSelectionPoint, width: number): boolean;
+  clearSelection?(): void;
   wantsKeyRelease?: boolean;
   invalidate(): void;
+}
+
+interface ComponentSelectionPoint {
+  x: number;
+  y: number;
+  boundary?: boolean;
 }
 ```
 
@@ -23,6 +32,9 @@ interface Component {
 |--------|-------------|
 | `render(width)` | Return array of strings (one per line). Each line **must not exceed `width`**. |
 | `handleInput?(data)` | Receive keyboard input when component has focus. |
+| `handleClick?(x, y, width)` | Receive primary-button clicks inside the focused component, using component-local terminal cells. |
+| `handleSelection?(start, end, width)` | Receive completed primary-button selections inside the focused component. Return `true` to own the selection. |
+| `clearSelection?()` | Clear component-owned selection state. |
 | `wantsKeyRelease?` | If true, component receives key release events (Kitty protocol). Default: false. |
 | `invalidate()` | Clear cached render state. Called on theme changes. |
 
@@ -783,9 +795,13 @@ ctx.ui.setWorkingIndicator({ frames: [] });
 
 // Restore pi's default spinner
 ctx.ui.setWorkingIndicator();
+
+// Configure hidden thinking independently with the same options
+ctx.ui.setThinkingIndicator({ frames: [ctx.ui.theme.fg("thinkingText", "🧠")] });
+ctx.ui.setThinkingIndicator();
 ```
 
-This only affects the normal streaming working indicator. Compaction and retry loaders keep their built-in styling. Custom frames are rendered verbatim, so extensions must add their own colors when needed.
+`setWorkingIndicator` affects the normal streaming loader; `setThinkingIndicator` affects hidden thinking. Compaction and retry loaders keep their built-in styling. Custom frames are rendered verbatim, so extensions must add their own colors when needed.
 
 **Examples:** [working-indicator.ts](../examples/extensions/working-indicator.ts)
 

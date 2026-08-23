@@ -1,97 +1,92 @@
-import { describe, expect, it, vi } from "vitest";
-import {
-	type ActivityToolCall,
-	type ActivityUnit,
-	extractCommitHash,
-	splitActivitySections,
-	summarizeSection,
-	type ToolPhraseOverride,
-} from "../src/core/tool-activity-summary.ts";
+import { type AssistantMessage, fauxAssistantMessage, fauxThinking } from "@earendil-works/pi-ai";
+import { setKeybindings } from "@earendil-works/pi-tui";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { KeybindingsManager } from "../src/core/keybindings.ts";
+import { type ActivityToolCall, extractCommitHash, summarizeSection } from "../src/core/tool-activity-summary.ts";
 import { ToolActivitySummaryComponent } from "../src/modes/interactive/components/tool-activity-summary.ts";
 import type { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
+import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 
 function call(id: string, toolName: string, args: Record<string, unknown> = {}): ActivityToolCall {
 	return { toolName, toolCallId: id, args };
 }
 
-function text(text: string): ActivityUnit {
-	return { kind: "text", text };
-}
+beforeAll(() => setKeybindings(new KeybindingsManager()));
 
-function tc(c: ActivityToolCall): ActivityUnit {
-	return { kind: "toolCall", toolCall: c };
-}
+describe("InteractiveMode restored activity boundaries", () => {
+	function render(message: AssistantMessage) {
+		const finalizeActiveToolSection = vi.fn();
+		const context = {
+			pendingTools: new Map<string, ToolExecutionComponent>(),
+			sectionByToolCall: new Map<string, ToolActivitySummaryComponent>(),
+			standaloneToolCall: new Map<string, ToolExecutionComponent>(),
+			finalizeActiveToolSection,
+			settingsManager: { getShowCacheMissNotices: () => false },
+			sessionManager: { getEntries: () => [] },
+			addMessageToChat: () => {},
+			ui: { requestRender: () => {} },
+		};
+		const renderSessionItems = (
+			InteractiveMode.prototype as unknown as {
+				renderSessionItems(this: typeof context, items: readonly AssistantMessage[]): void;
+			}
+		).renderSessionItems;
 
-describe("splitActivitySections", () => {
-	it("groups consecutive tool calls into one section", () => {
-		const sections = splitActivitySections([
-			tc(call("1", "bash", { command: "ls" })),
-			tc(call("2", "read", {})),
-			tc(call("3", "bash", { command: "pwd" })),
-		]);
-		expect(sections).toHaveLength(1);
-		expect(sections[0].toolCalls.map((c) => c.toolCallId)).toEqual(["1", "2", "3"]);
+		renderSessionItems.call(context, [message]);
+		return finalizeActiveToolSection;
+	}
+
+	it("splits on visible text but not hidden thinking", () => {
+		expect(render(fauxAssistantMessage("Visible commentary"))).toHaveBeenCalledTimes(2);
+		expect(render(fauxAssistantMessage(fauxThinking("Hidden reasoning")))).toHaveBeenCalledTimes(1);
 	});
+});
 
-	it("does not split on commentary text (tool calls share one section)", () => {
-		const sections = splitActivitySections([
-			tc(call("1", "bash", { command: "ls" })),
-			text("Now I will check the file."),
-			tc(call("2", "read", {})),
-		]);
-		expect(sections).toHaveLength(1);
-		expect(sections[0].toolCalls.map((c) => c.toolCallId)).toEqual(["1", "2"]);
-	});
+describe("InteractiveMode live activity boundaries", () => {
+	it("does not close the aggregate again when a standalone tool is repeated in cumulative stream data", async () => {
+		const finalizeActiveToolSection = vi.fn();
+		const standaloneToolCall = new Map<string, ToolExecutionComponent>();
+		const execution = {
+			updateArgs: vi.fn(),
+			setExpanded: vi.fn(),
+			updateResult: vi.fn(),
+			markExecutionStarted: vi.fn(),
+			setArgsComplete: vi.fn(),
+		} as unknown as ToolExecutionComponent;
+		const context = {
+			isInitialized: true,
+			streamingComponent: { updateContent: vi.fn() },
+			streamingMessage: undefined,
+			hideThinkingBlock: true,
+			thinkingStartMs: undefined,
+			thinkingStreamActive: false,
+			workingVisible: false,
+			pendingTools: new Map<string, ToolExecutionComponent>(),
+			sectionByToolCall: new Map<string, ToolActivitySummaryComponent>(),
+			standaloneToolCall,
+			finalizeActiveToolSection,
+			isStandaloneTool: (name: string) => name === "write",
+			createStandaloneToolExecution: (_name: string, id: string) => {
+				standaloneToolCall.set(id, execution);
+				return execution;
+			},
+			getOrCreateActiveToolSection: vi.fn(),
+			footer: { invalidate: vi.fn() },
+			ui: { requestRender: vi.fn() },
+		};
+		const handleEvent = (
+			InteractiveMode.prototype as unknown as { handleEvent(this: typeof context, event: unknown): Promise<void> }
+		).handleEvent;
+		const message = {
+			role: "assistant",
+			content: [{ type: "toolCall", name: "write", id: "write-1", arguments: { path: "a.ts" } }],
+		};
 
-	it("ignores leading and trailing text", () => {
-		const sections = splitActivitySections([text("Starting."), tc(call("1", "read", {})), text("Done.")]);
-		expect(sections).toHaveLength(1);
-		expect(sections[0].toolCalls.map((c) => c.toolCallId)).toEqual(["1"]);
-	});
+		await handleEvent.call(context, { type: "message_update", message });
+		await handleEvent.call(context, { type: "message_update", message });
 
-	it("returns no sections for empty or text-only input", () => {
-		expect(splitActivitySections([])).toEqual([]);
-		expect(splitActivitySections([text("only commentary")])).toEqual([]);
-	});
-
-	it("preserves order across tool calls with interleaved text", () => {
-		const sections = splitActivitySections([
-			tc(call("1", "bash", { command: "a" })),
-			text("x"),
-			tc(call("2", "bash", { command: "b" })),
-			tc(call("3", "bash", { command: "c" })),
-		]);
-		expect(sections.map((s) => s.toolCalls.map((c) => c.toolCallId))).toEqual([["1", "2", "3"]]);
-	});
-
-	it("emits each write/edit as its own standalone section", () => {
-		const sections = splitActivitySections([
-			tc(call("1", "read", {})),
-			tc(call("2", "write", {})),
-			tc(call("3", "edit", {})),
-			tc(call("4", "read", {})),
-		]);
-		expect(sections.map((s) => s.toolCalls.map((c) => c.toolCallId))).toEqual([["1"], ["2"], ["3"], ["4"]]);
-	});
-
-	it("keeps consecutive writes separate from each other", () => {
-		const sections = splitActivitySections([
-			tc(call("1", "write", { path: "a" })),
-			tc(call("2", "write", { path: "b" })),
-			text("x"),
-			tc(call("3", "bash", { command: "pwd" })),
-		]);
-		expect(sections.map((s) => s.toolCalls.map((c) => c.toolCallId))).toEqual([["1"], ["2"], ["3"]]);
-	});
-
-	it("does not split on non-write/edit tools", () => {
-		const sections = splitActivitySections([
-			tc(call("1", "read", {})),
-			tc(call("2", "bash", { command: "pwd" })),
-			tc(call("3", "grep", {})),
-		]);
-		expect(sections.map((s) => s.toolCalls.map((c) => c.toolCallId))).toEqual([["1", "2", "3"]]);
+		expect(finalizeActiveToolSection).toHaveBeenCalledOnce();
 	});
 });
 
@@ -113,13 +108,21 @@ describe("summarizeSection", () => {
 	it("detects git commit and extracts the hash from the result", () => {
 		const calls = [call("gc", "bash", { command: "git commit -m fix" })];
 		const phrase = summarizeSection(calls, {
-			results: { gc: "[main 9be7da6] fix\n 1 file changed, 1 insertion(+)\n" },
+			results: { gc: { isError: false, isPartial: false, commitHash: "9be7da6" } },
 		});
 		expect(phrase).toBe("Committed 9be7da6");
 	});
 
-	it("renders git commit without a hash when the result is unknown", () => {
-		expect(summarizeSection([call("gc", "bash", { command: "git commit -am wip" })])).toBe("Committed");
+	it("does not claim a pending commit succeeded", () => {
+		expect(summarizeSection([call("gc", "bash", { command: "git commit -am wip" })])).toBe("ran 1 shell command");
+	});
+
+	it("reports a failed commit", () => {
+		expect(
+			summarizeSection([call("gc", "bash", { command: "git commit -am wip" })], {
+				results: { gc: { isError: true, isPartial: false } },
+			}),
+		).toBe("commit failed");
 	});
 
 	it("mixes commit with other tools", () => {
@@ -129,15 +132,13 @@ describe("summarizeSection", () => {
 			call("r", "read", {}),
 		];
 		const phrase = summarizeSection(calls, {
-			results: { gc: "[main 9be7da6] fix\n" },
+			results: { gc: { isError: false, isPartial: false, commitHash: "9be7da6" } },
 		});
 		expect(phrase).toBe("Committed 9be7da6, ran 1 shell command, read 1 file");
 	});
 
-	it("wins with a custom override phrase", () => {
-		const override: ToolPhraseOverride = (name, count) =>
-			name === "my-ext" ? `${count} custom thing(s)` : undefined;
-		expect(summarizeSection([call("1", "my-ext", {})], { overridePhrase: override })).toBe("1 custom thing(s)");
+	it("does not mistake arguments containing git commit for a commit command", () => {
+		expect(summarizeSection([call("gc", "bash", { command: "echo 'git commit'" })])).toBe("ran 1 shell command");
 	});
 
 	it("returns empty for an empty section", () => {
@@ -234,10 +235,10 @@ describe("ToolActivitySummaryComponent hint markup", () => {
 		return section;
 	}
 
-	it("appends the hard-coded grey hint with a bold ctrl+o", () => {
+	it("appends the configured expand hint", () => {
 		const section = sectionHarness();
 		section.addOrUpdateTool("bash", "tool-1", { command: "ls" });
-		section.setCollapseHint("(ctrl+o to expand)");
+		section.setShowCollapseHint(true);
 
 		const lines = section.render(80);
 		const summary = lines[1];

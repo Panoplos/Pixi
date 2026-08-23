@@ -635,8 +635,7 @@ describe("per-tool block backgrounds", () => {
 		expect(raw).not.toContain(theme.getBgAnsi("toolBodyBg"));
 	});
 
-	test("toolBodyBg resolves to the footer-model grey in dark", () => {
-		expect(theme.getBgAnsi("toolBodyBg")).toBe(theme.getBgAnsi("toolBodyBg"));
+	test("toolBodyBg resolves to a background color", () => {
 		expect(theme.getBgAnsi("toolBodyBg")).toBeTruthy();
 	});
 });

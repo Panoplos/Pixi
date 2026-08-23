@@ -4,7 +4,7 @@ import { theme } from "../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { keyText } from "./keybinding-hints.ts";
 
-export type StatusIndicatorKind = "working" | "retry" | "compaction" | "branchSummary";
+export type StatusIndicatorKind = "working" | "thinking" | "retry" | "compaction" | "branchSummary";
 
 export class StatusIndicator extends Loader {
 	readonly kind: StatusIndicatorKind;
@@ -35,6 +35,28 @@ export class WorkingStatusIndicator extends StatusIndicator {
 			(text) => theme.fg("muted", text),
 			message,
 			indicator,
+		);
+	}
+}
+
+export class ThinkingStatusIndicator extends StatusIndicator {
+	static resolveIndicator(indicator?: WorkingIndicatorOptions): WorkingIndicatorOptions {
+		return (
+			indicator ?? {
+				frames: ["◐", "◓", "◑", "◒"].map((frame) => theme.fg("thinkingText", frame)),
+				intervalMs: 120,
+			}
+		);
+	}
+
+	constructor(ui: TUI, message: string, indicator?: WorkingIndicatorOptions) {
+		super(
+			"thinking",
+			ui,
+			(spinner) => theme.fg("thinkingText", spinner),
+			(text) => theme.italic(theme.fg("thinkingText", text)),
+			message,
+			ThinkingStatusIndicator.resolveIndicator(indicator),
 		);
 	}
 }

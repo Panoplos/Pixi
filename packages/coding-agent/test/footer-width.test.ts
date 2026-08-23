@@ -65,6 +65,7 @@ function createSession(options: {
 
 	const session = {
 		state: {
+			messages: entries.flatMap((entry) => (entry.type === "message" ? [entry.message] : [])),
 			model: {
 				id: options.modelId ?? "test-model",
 				provider: options.provider ?? "test",

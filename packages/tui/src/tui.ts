@@ -33,6 +33,15 @@ export interface Component {
 	 */
 	handleInput?(data: string): void;
 
+	/** Handle a primary-button click at component-local terminal coordinates. */
+	handleClick?(x: number, y: number, width: number): void;
+
+	/** Handle a completed selection at component-local terminal coordinates. */
+	handleSelection?(start: ComponentSelectionPoint, end: ComponentSelectionPoint, width: number): boolean;
+
+	/** Clear component-owned selection state. */
+	clearSelection?(): void;
+
 	/**
 	 * If true, component receives key release events (Kitty protocol).
 	 * Default is false - release events are filtered out.
@@ -44,6 +53,12 @@ export interface Component {
 	 * Called when theme changes or when component needs to re-render from scratch.
 	 */
 	invalidate(): void;
+}
+
+export interface ComponentSelectionPoint {
+	x: number;
+	y: number;
+	boundary?: boolean;
 }
 
 export type TuiInputListenerResult = { consume?: boolean; data?: string } | undefined;
@@ -241,6 +256,36 @@ export class Container implements Component {
 			}
 		}
 		return lines;
+	}
+
+	handleClick(x: number, y: number, width: number): void {
+		let offset = 0;
+		for (const child of this.children) {
+			const height = child.render(width).length;
+			if (y >= offset && y < offset + height) {
+				child.handleClick?.(x, y - offset, width);
+				return;
+			}
+			offset += height;
+		}
+	}
+
+	handleSelection(start: ComponentSelectionPoint, end: ComponentSelectionPoint, width: number): boolean {
+		let offset = 0;
+		for (const child of this.children) {
+			const height = child.render(width).length;
+			if (start.y >= offset && start.y < offset + height && end.y >= offset && end.y < offset + height) {
+				return (
+					child.handleSelection?.({ ...start, y: start.y - offset }, { ...end, y: end.y - offset }, width) ?? false
+				);
+			}
+			offset += height;
+		}
+		return false;
+	}
+
+	clearSelection(): void {
+		for (const child of this.children) child.clearSelection?.();
 	}
 }
 
@@ -536,7 +581,7 @@ export abstract class TuiBase extends Container implements TUI {
 		return this.getMountedRoots().some((child) => this.containsComponent(child, component));
 	}
 
-	private containsComponent(root: Component, target: Component): boolean {
+	protected containsComponent(root: Component, target: Component): boolean {
 		if (root === target) return true;
 		if (!(root instanceof Container)) return false;
 		return root.children.some((child) => this.containsComponent(child, target));

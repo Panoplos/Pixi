@@ -128,7 +128,7 @@ import { FooterComponent, formatTokens } from "./components/footer.ts";
 import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.ts";
 import { LoginDialogComponent } from "./components/login-dialog.ts";
 import { createMermaidMarkdownTransformer } from "./components/mermaid.ts";
-import { ContextConfigComponent, EffortSelectorComponent } from "./components/model-config-selectors.ts";
+import { ContextConfigComponent } from "./components/model-config-selectors.ts";
 import { ModelSelectorComponent } from "./components/model-selector.ts";
 import {
 	type AuthSelectorProvider,
@@ -145,9 +145,11 @@ import {
 	IdleStatus,
 	RetryStatusIndicator,
 	type StatusIndicator,
+	ThinkingStatusIndicator,
 	WorkingStatusIndicator,
 } from "./components/status-indicator.ts";
-import { ThinkingIndicatorComponent } from "./components/thinking-indicator.ts";
+import { formatThinkingDuration } from "./components/thinking-indicator.ts";
+import { ThinkingSelectorComponent } from "./components/thinking-selector.ts";
 import { ToolActivitySummaryComponent } from "./components/tool-activity-summary.ts";
 import { ToolExecutionComponent } from "./components/tool-execution.ts";
 import { TreeSelectorComponent } from "./components/tree-selector.ts";
@@ -211,6 +213,10 @@ type RenderSessionItem = AgentMessage | Extract<SessionEntry, { type: "custom" }
 
 function isCustomSessionEntry(item: RenderSessionItem): item is Extract<SessionEntry, { type: "custom" }> {
 	return "type" in item && item.type === "custom";
+}
+
+function hasVisibleAssistantText(message: AssistantMessage): boolean {
+	return message.content.some((content) => content.type === "text" && content.text.trim());
 }
 
 const DEAD_TERMINAL_ERROR_CODES = new Set(["EIO", "EPIPE", "ENOTCONN"]);
@@ -434,6 +440,7 @@ export class InteractiveMode {
 	private workingMessage: string | undefined = undefined;
 	private workingVisible = true;
 	private workingIndicatorOptions: WorkingIndicatorOptions | undefined = undefined;
+	private thinkingIndicatorOptions: WorkingIndicatorOptions | undefined = undefined;
 	private readonly defaultWorkingMessage = "Working...";
 	private readonly defaultHiddenThinkingLabel = "Thinking...";
 	private hiddenThinkingLabel = this.defaultHiddenThinkingLabel;
@@ -449,6 +456,7 @@ export class InteractiveMode {
 	private lastStatusText: Text | undefined = undefined;
 	private toastStatusSpacer: Spacer | undefined = undefined;
 	private toastStatusText: Text | undefined = undefined;
+	private toastStatusTimer: ReturnType<typeof setTimeout> | undefined;
 	private managedToolStatusStarted = false;
 
 	// Streaming message tracking
@@ -460,8 +468,8 @@ export class InteractiveMode {
 	/** The currently open aggregate tool-activity section, if any. */
 	private activeToolSection: ToolActivitySummaryComponent | undefined;
 	// In-progress thinking timing for the live stream (runtime-only; not rebuild).
-	private activeThinkingIndicator: ThinkingIndicatorComponent | undefined;
 	private thinkingStartMs: number | undefined;
+	private thinkingStreamActive = false;
 	/** Maps a tool call id to the aggregate section that owns it, for result routing. */
 	private sectionByToolCall = new Map<string, ToolActivitySummaryComponent>();
 	/** Standalone (non-aggregated) tool executions, e.g. write/edit, by tool call id. */
@@ -2113,17 +2121,25 @@ export class InteractiveMode {
 	private setWorkingVisible(visible: boolean): void {
 		this.workingVisible = visible;
 		if (!visible) {
-			this.clearStatusIndicator("working");
+			if (this.activeStatusIndicator?.kind === "working" || this.activeStatusIndicator?.kind === "thinking") {
+				this.clearStatusIndicator();
+			}
 			this.ui.requestRender();
 			return;
 		}
-		if (this.session.isStreaming && this.activeStatusIndicator?.kind !== "working") {
+		if (
+			this.session.isStreaming &&
+			this.activeStatusIndicator?.kind !== "working" &&
+			this.activeStatusIndicator?.kind !== "thinking"
+		) {
 			this.showStatusIndicator(
-				new WorkingStatusIndicator(
-					this.ui,
-					this.workingMessage ?? this.defaultWorkingMessage,
-					this.workingIndicatorOptions,
-				),
+				!this.hideThinkingBlock || !this.thinkingStreamActive
+					? new WorkingStatusIndicator(
+							this.ui,
+							this.workingMessage ?? this.defaultWorkingMessage,
+							this.workingIndicatorOptions,
+						)
+					: new ThinkingStatusIndicator(this.ui, this.hiddenThinkingLabel, this.thinkingIndicatorOptions),
 			);
 		}
 		this.ui.requestRender();
@@ -2137,10 +2153,19 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
+	private setThinkingIndicator(options?: WorkingIndicatorOptions): void {
+		this.thinkingIndicatorOptions = options;
+		if (this.activeStatusIndicator?.kind === "thinking") {
+			this.activeStatusIndicator.setIndicator(ThinkingStatusIndicator.resolveIndicator(options));
+		}
+		this.ui.requestRender();
+	}
+
 	private setHiddenThinkingLabel(label?: string): void {
 		this.hiddenThinkingLabel = label ?? this.defaultHiddenThinkingLabel;
-		// The label is consumed by the live ThinkingIndicatorComponent (created on
-		// thinking_start); restored sessions show no thinking, so nothing re-renders.
+		if (this.activeStatusIndicator?.kind === "thinking") {
+			this.activeStatusIndicator.setMessage(this.hiddenThinkingLabel);
+		}
 		this.ui.requestRender();
 	}
 
@@ -2226,6 +2251,7 @@ export class InteractiveMode {
 		this.workingMessage = undefined;
 		this.workingVisible = true;
 		this.setWorkingIndicator();
+		this.setThinkingIndicator();
 		if (this.activeStatusIndicator?.kind === "working") {
 			this.activeStatusIndicator.setMessage(
 				`${this.defaultWorkingMessage} (${keyText("app.interrupt")} to interrupt)`,
@@ -2398,6 +2424,7 @@ export class InteractiveMode {
 			},
 			setWorkingVisible: (visible) => this.setWorkingVisible(visible),
 			setWorkingIndicator: (options) => this.setWorkingIndicator(options),
+			setThinkingIndicator: (options) => this.setThinkingIndicator(options),
 			setHiddenThinkingLabel: (label) => this.setHiddenThinkingLabel(label),
 			setWidget: (key, content, options) => this.setExtensionWidget(key, content, options),
 			setFooter: (factory) => this.setExtensionFooter(factory),
@@ -3182,11 +3209,15 @@ export class InteractiveMode {
 				} else if (event.message.role === "user") {
 					// A new user turn closes any open aggregate tool-activity section.
 					this.finalizeActiveToolSection();
-					this.resetThinkingIndicator();
+					this.thinkingStartMs = undefined;
+					this.thinkingStreamActive = false;
 					this.addMessageToChat(event.message);
 					this.updatePendingMessagesDisplay();
 					this.ui.requestRender();
 				} else if (event.message.role === "assistant") {
+					if (hasVisibleAssistantText(event.message)) {
+						this.finalizeActiveToolSection();
+					}
 					this.streamingComponent = new AssistantMessageComponent(
 						undefined,
 						this.hideThinkingBlock,
@@ -3208,28 +3239,35 @@ export class InteractiveMode {
 
 					// Drive the live thinking indicator from the stream markers.
 					const streamEvent = event.assistantMessageEvent;
-					if (this.hideThinkingBlock) {
-						if (streamEvent?.type === "thinking_start") {
-							this.thinkingStartMs = Date.now();
-							this.activeThinkingIndicator = new ThinkingIndicatorComponent(
-								this.hiddenThinkingLabel,
-								this.outputPad,
+					if (
+						(streamEvent?.type === "text_delta" && streamEvent.delta.trim()) ||
+						(streamEvent?.type === "text_end" && streamEvent.content.trim())
+					) {
+						this.finalizeActiveToolSection();
+					}
+					if (streamEvent?.type === "thinking_start") {
+						if (this.thinkingStartMs !== undefined) {
+							if (this.hideThinkingBlock) this.finalizeThinkingIndicator();
+							else this.thinkingStartMs = undefined;
+						}
+						this.thinkingStreamActive = true;
+						this.thinkingStartMs = Date.now();
+						if (this.hideThinkingBlock && this.workingVisible) {
+							this.showStatusIndicator(
+								new ThinkingStatusIndicator(this.ui, this.hiddenThinkingLabel, this.thinkingIndicatorOptions),
 							);
-							this.chatContainer.addChild(this.activeThinkingIndicator);
-							this.activeThinkingIndicator.setActive();
-						} else if (streamEvent?.type === "thinking_end") {
-							this.finalizeThinkingIndicator();
-						} else if (
-							this.activeThinkingIndicator &&
+						}
+					} else if (
+						streamEvent?.type === "thinking_end" ||
+						(this.thinkingStreamActive &&
 							(streamEvent?.type === "text_start" ||
 								streamEvent?.type === "text_delta" ||
 								streamEvent?.type === "text_end" ||
-								streamEvent?.type === "toolcall_start")
-						) {
-							// The model has moved on to streaming visible content, so the
-							// thinking run finished even if no thinking_end marker arrived.
-							this.finalizeThinkingIndicator();
-						}
+								streamEvent?.type === "toolcall_start"))
+					) {
+						this.thinkingStreamActive = false;
+						if (this.hideThinkingBlock) this.finalizeThinkingIndicator();
+						else this.thinkingStartMs = undefined;
 					}
 
 					for (const content of this.streamingMessage.content) {
@@ -3237,7 +3275,9 @@ export class InteractiveMode {
 							if (this.isStandaloneTool(content.name)) {
 								// write/edit show as their own normal tool block, never folded
 								// into an aggregate group.
-								this.finalizeActiveToolSection();
+								if (!this.standaloneToolCall.has(content.id)) {
+									this.finalizeActiveToolSection();
+								}
 								const component = this.createStandaloneToolExecution(
 									content.name,
 									content.id,
@@ -3245,7 +3285,7 @@ export class InteractiveMode {
 								);
 								this.pendingTools.set(content.id, component);
 							} else {
-								const section = this.getOrCreateActiveToolSection();
+								const section = this.sectionByToolCall.get(content.id) ?? this.getOrCreateActiveToolSection();
 								const component = section.addOrUpdateTool(content.name, content.id, content.arguments);
 								this.sectionByToolCall.set(content.id, section);
 								this.pendingTools.set(content.id, component);
@@ -3348,6 +3388,9 @@ export class InteractiveMode {
 				if (this.settingsManager.getShowTerminalProgress()) {
 					this.ui.terminal.setProgress(false);
 				}
+				this.thinkingStreamActive = false;
+				if (this.hideThinkingBlock) this.finalizeThinkingIndicator();
+				else this.thinkingStartMs = undefined;
 				this.clearStatusIndicator("working");
 				if (this.streamingComponent) {
 					this.chatContainer.removeChild(this.streamingComponent);
@@ -3357,8 +3400,7 @@ export class InteractiveMode {
 				this.pendingTools.clear();
 				this.standaloneToolCall.clear();
 				this.sectionByToolCall.clear();
-				this.finalizeThinkingIndicator();
-				this.resetThinkingIndicator();
+				this.thinkingStartMs = undefined;
 
 				this.ui.requestRender();
 				break;
@@ -3552,6 +3594,15 @@ export class InteractiveMode {
 			this.toastStatusSpacer = spacer;
 			this.toastStatusText = text;
 		}
+		if (this.toastStatusTimer) clearTimeout(this.toastStatusTimer);
+		this.toastStatusTimer = setTimeout(() => {
+			if (this.toastStatusSpacer) this.chatContainer.removeChild(this.toastStatusSpacer);
+			if (this.toastStatusText) this.chatContainer.removeChild(this.toastStatusText);
+			this.toastStatusSpacer = undefined;
+			this.toastStatusText = undefined;
+			this.toastStatusTimer = undefined;
+			this.ui.requestRender();
+		}, 3000);
 		this.ui.requestRender();
 	}
 
@@ -3712,6 +3763,9 @@ export class InteractiveMode {
 			const message = item;
 			// Assistant messages need special handling for tool calls
 			if (message.role === "assistant") {
+				if (hasVisibleAssistantText(message)) {
+					this.finalizeActiveToolSection();
+				}
 				this.addMessageToChat(message);
 				// Render tool calls into the active aggregate section (write/edit standalone).
 				for (const content of message.content) {
@@ -4191,9 +4245,9 @@ export class InteractiveMode {
 			return;
 		}
 		this.showSelector((done) => {
-			const selector = new EffortSelectorComponent(
-				levels,
+			const selector = new ThinkingSelectorComponent(
 				this.session.thinkingLevel,
+				levels,
 				(level) => {
 					this.session.setThinkingLevel(level);
 					this.footer.invalidate();
@@ -4206,7 +4260,7 @@ export class InteractiveMode {
 					this.ui.requestRender();
 				},
 			);
-			return { component: selector, focus: selector };
+			return { component: selector, focus: selector.getSelectList() };
 		});
 	}
 
@@ -4282,7 +4336,7 @@ export class InteractiveMode {
 			return existing;
 		}
 		const component = this.createToolExecution(name, id, args);
-		component.setExpanded(this.toolOutputExpanded);
+		component.setExpanded(false);
 		this.standaloneToolCall.set(id, component);
 		this.chatContainer.addChild(component);
 		return component;
@@ -4293,11 +4347,11 @@ export class InteractiveMode {
 		return name === "write" || name === "edit";
 	}
 
-	/** Point the "(ctrl + o to expand)" hint at the most recent (last) section only. */
+	/** Point the expand hint at the most recent (last) section only. */
 	private updateExpandHints(): void {
 		const sections = this.getAggregateSections();
 		for (let i = 0; i < sections.length; i++) {
-			sections[i].setCollapseHint(i === sections.length - 1 ? "(ctrl+o to expand)" : "");
+			sections[i].setShowCollapseHint(i === sections.length - 1);
 		}
 	}
 
@@ -4306,7 +4360,7 @@ export class InteractiveMode {
 			this.activeToolSection = new ToolActivitySummaryComponent(
 				{
 					createExecution: (name, id, args) => this.createToolExecution(name, id, args),
-					expanded: this.toolOutputExpanded,
+					expanded: false,
 				},
 				this.ui,
 			);
@@ -4321,19 +4375,33 @@ export class InteractiveMode {
 		this.updateExpandHints();
 	}
 
-	/** Flip an in-progress thinking label to `Thought for Ns` and clear the run state. */
+	/** Append a completed thinking duration, then restore the working status. */
 	private finalizeThinkingIndicator(): void {
-		if (!this.activeThinkingIndicator) return;
-		const elapsed = this.thinkingStartMs !== undefined ? Date.now() - this.thinkingStartMs : 0;
+		if (this.thinkingStartMs === undefined) return;
+		const elapsed = Date.now() - this.thinkingStartMs;
 		this.thinkingStartMs = undefined;
-		this.activeThinkingIndicator.setDone(elapsed);
-		this.activeThinkingIndicator = undefined;
-	}
-
-	/** Close any in-progress thinking timing (runtime-only; a done indicator persists). */
-	private resetThinkingIndicator(): void {
-		this.activeThinkingIndicator = undefined;
-		this.thinkingStartMs = undefined;
+		const component = new Text(
+			theme.italic(theme.fg("thinkingText", `Thought for ${formatThinkingDuration(elapsed)}`)),
+			this.outputPad,
+			0,
+		);
+		const streamingIndex = this.streamingComponent
+			? this.chatContainer.children.indexOf(this.streamingComponent)
+			: -1;
+		if (streamingIndex >= 0) {
+			this.chatContainer.children.splice(streamingIndex, 0, component);
+		} else {
+			this.chatContainer.addChild(component);
+		}
+		if (this.workingVisible && this.activeStatusIndicator?.kind === "thinking") {
+			this.showStatusIndicator(
+				new WorkingStatusIndicator(
+					this.ui,
+					this.workingMessage ?? this.defaultWorkingMessage,
+					this.workingIndicatorOptions,
+				),
+			);
+		}
 	}
 
 	private getAggregateSections(): ToolActivitySummaryComponent[] {
@@ -4460,6 +4528,17 @@ export class InteractiveMode {
 			this.streamingComponent.setHideThinkingBlock(this.hideThinkingBlock);
 			this.streamingComponent.updateContent(this.streamingMessage);
 			this.chatContainer.addChild(this.streamingComponent);
+		}
+		if (this.thinkingStreamActive && this.workingVisible) {
+			this.showStatusIndicator(
+				this.hideThinkingBlock
+					? new ThinkingStatusIndicator(this.ui, this.hiddenThinkingLabel, this.thinkingIndicatorOptions)
+					: new WorkingStatusIndicator(
+							this.ui,
+							this.workingMessage ?? this.defaultWorkingMessage,
+							this.workingIndicatorOptions,
+						),
+			);
 		}
 
 		this.showStatus(`Thinking blocks: ${this.hideThinkingBlock ? "hidden" : "visible"}`);
@@ -6784,6 +6863,8 @@ export class InteractiveMode {
 
 	stop(fullscreenExitOutput = this.settingsManager.getFullscreenExitOutput()): void {
 		this.disposeActiveSelector();
+		if (this.toastStatusTimer) clearTimeout(this.toastStatusTimer);
+		this.toastStatusTimer = undefined;
 		if (this.settingsManager.getShowTerminalProgress()) {
 			this.ui.terminal.setProgress(false);
 		}

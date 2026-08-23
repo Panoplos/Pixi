@@ -11,6 +11,7 @@ describe("formatThinkingDuration", () => {
 	it("formats minute-plus durations as m ss", () => {
 		expect(formatThinkingDuration(60_000)).toBe("1m 00s");
 		expect(formatThinkingDuration(65_400)).toBe("1m 05s");
+		expect(formatThinkingDuration(119_999)).toBe("2m 00s");
 		expect(formatThinkingDuration(125_000)).toBe("2m 05s");
 	});
 });

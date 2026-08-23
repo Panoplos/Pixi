@@ -161,15 +161,15 @@ vim ~/.pi/agent/themes/my-theme.json
 
 - `name` is required, must be unique, and must not contain `/`.
 - `vars` is optional. Define reusable colors here, then reference them in `colors`.
-- `colors` must define all 51 required tokens. `thinkingMax`, `scrollbarThumb`, and the two search highlight tokens are optional and use the fallbacks listed below.
+- `colors` must define every required token. Tokens marked optional use the fallbacks listed below.
 
 The `$schema` field enables editor auto-completion and validation.
 
 ## Color Tokens
 
-Every theme must define all 51 required color tokens. The optional tokens preserve compatibility with existing themes: `thinkingMax` falls back to `thinkingXhigh`, `scrollbarThumb` and `searchMatchBg` fall back to `selectedBg`, and `searchMatchText` falls back to `text`. Other search matches use `searchMatchText` on `searchMatchBg` with an underline; the current match reverses that foreground/background pair and uses bold text. The footer status-line tokens are also optional and fall back to sensible defaults when omitted.
+Optional tokens preserve compatibility with existing themes. Their fallback is documented beside each token. Other search matches use `searchMatchText` on `searchMatchBg` with an underline; the current match reverses that foreground/background pair and uses bold text.
 
-### Core UI (11 colors)
+### Core UI (11 required, 1 optional)
 
 | Token | Purpose |
 |-------|---------|
@@ -184,9 +184,9 @@ Every theme must define all 51 required color tokens. The optional tokens preser
 | `dim` | Tertiary text |
 | `text` | Default text (usually `""`) |
 | `thinkingText` | Thinking block text |
-| `promptPrefix` (optional) | Input box prompt marker (the leading `❯ `); falls back to `accent`
+| `promptPrefix` (optional) | Input box prompt marker (the leading `❯ `); falls back to `accent` |
 
-### Backgrounds & Content (11 required, 3 optional)
+### Backgrounds & Content (11 required, 4 optional)
 
 | Token | Purpose |
 |-------|---------|
@@ -202,7 +202,7 @@ Every theme must define all 51 required color tokens. The optional tokens preser
 | `toolPendingBg` | Tool box (pending) |
 | `toolSuccessBg` | Tool box (success) |
 | `toolErrorBg` | Tool box (error) |
-| `toolBodyBg` | read/bash success background (grey) |
+| `toolBodyBg` (optional) | read/bash success background (grey) |
 | `toolTitle` | Tool title |
 | `toolOutput` | Tool output text |
 
@@ -221,16 +221,16 @@ Every theme must define all 51 required color tokens. The optional tokens preser
 | `mdHr` | Horizontal rule |
 | `mdListBullet` | List bullets |
 
-### Tool Diffs
+### Tool Diffs (3 required, 3 optional)
 
 | Token | Purpose |
 |-------|---------|
 | `toolDiffAdded` | Added lines |
 | `toolDiffRemoved` | Removed lines |
 | `toolDiffContext` | Context lines |
-| `toolDiffText` | White text on colored diff rows |
-| `toolDiffAddedBg` | Added-row background (dark green) |
-| `toolDiffRemovedBg` | Removed-row background (dark red) |
+| `toolDiffText` (optional) | White text on colored diff rows |
+| `toolDiffAddedBg` (optional) | Added-row background (dark green) |
+| `toolDiffRemovedBg` (optional) | Removed-row background (dark red) |
 
 ### Syntax Highlighting (9 colors)
 

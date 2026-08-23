@@ -1,4 +1,4 @@
-import type { Component } from "@earendil-works/pi-tui";
+import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import * as Diff from "diff";
 import { theme } from "../theme/theme.ts";
 
@@ -198,13 +198,9 @@ export const BODY_JOINT_WIDTH = 2;
  * text. Pads every rendered line to `width`.
  */
 export class DiffRowsComponent implements Component {
-	private rows: DiffRow[];
+	private readonly rows: DiffRow[];
 
 	constructor(rows: DiffRow[]) {
-		this.rows = rows;
-	}
-
-	setRows(rows: DiffRow[]): void {
 		this.rows = rows;
 	}
 
@@ -213,21 +209,25 @@ export class DiffRowsComponent implements Component {
 	render(width: number): string[] {
 		const lines: string[] = [];
 		const numWidth = Math.max(1, ...this.rows.map((r) => r.lineNum.length));
-		const bgRegion = Math.max(1, width - BODY_JOINT_WIDTH);
-		const indent = " ".repeat(BODY_JOINT_WIDTH);
-		const visibleLen = (s: string): number => s.replace(/\x1b\[[0-9;]*m/g, "").length;
+		const indentWidth = Math.min(BODY_JOINT_WIDTH, Math.max(0, width));
+		const regionWidth = Math.max(0, width - indentWidth);
+		const indent = " ".repeat(indentWidth);
 
 		for (const row of this.rows) {
+			if (regionWidth === 0) {
+				lines.push(indent);
+				continue;
+			}
 			const num = row.lineNum.padStart(numWidth, " ");
 			const sep = row.kind === "context" ? "  " : row.kind === "removed" ? " -" : " +";
 			const body = `${num}${sep}${replaceTabs(row.content)}`;
 			if (row.kind === "context") {
-				const styled = theme.fg("toolDiffContext", body);
-				lines.push(indent + styled + " ".repeat(Math.max(0, width - BODY_JOINT_WIDTH - visibleLen(styled))));
+				const styled = truncateToWidth(theme.fg("toolDiffContext", body), regionWidth, "");
+				lines.push(indent + styled + " ".repeat(regionWidth - visibleWidth(styled)));
 			} else {
 				const bg = row.kind === "removed" ? "toolDiffRemovedBg" : "toolDiffAddedBg";
-				const styled = theme.fg("toolDiffText", body);
-				const pad = Math.max(0, bgRegion - visibleLen(styled));
+				const styled = truncateToWidth(theme.fg("toolDiffText", body), regionWidth, "");
+				const pad = regionWidth - visibleWidth(styled);
 				lines.push(indent + theme.bg(bg, styled + " ".repeat(pad)));
 			}
 		}

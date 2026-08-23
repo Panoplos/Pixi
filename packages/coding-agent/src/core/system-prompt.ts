@@ -115,10 +115,6 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	// Always include these
 	addGuideline("Be concise in your responses");
 	addGuideline("Show file paths clearly when working with files");
-	addGuideline(
-		"Issue tool calls directly and immediately: do not announce or narrate a tool call before issuing it " +
-			'(e.g. "Now let me...", "Let\'s...", "I\'ll...", "First, I\'ll..."); the tool call itself is the communication',
-	);
 
 	const guidelines = guidelinesList.map((g) => `- ${g}`).join("\n");
 

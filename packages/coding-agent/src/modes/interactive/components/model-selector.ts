@@ -218,14 +218,18 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 	private sortModels(models: ModelItem[]): ModelItem[] {
 		const sorted = [...models];
-		// Sort: current model first, then by lab group, then by id within the group.
+		const currentLab = this.currentModel ? modelLab(this.currentModel) : undefined;
+		// Keep every lab contiguous while putting the current model's lab and model first.
 		sorted.sort((a, b) => {
+			const aIsCurrentLab = a.lab === currentLab;
+			const bIsCurrentLab = b.lab === currentLab;
+			if (aIsCurrentLab !== bIsCurrentLab) return aIsCurrentLab ? -1 : 1;
+			const labOrder = a.lab.localeCompare(b.lab, undefined, { sensitivity: "base" });
+			if (labOrder !== 0) return labOrder;
 			const aIsCurrent = modelsAreEqual(this.currentModel, a.model);
 			const bIsCurrent = modelsAreEqual(this.currentModel, b.model);
 			if (aIsCurrent && !bIsCurrent) return -1;
 			if (!aIsCurrent && bIsCurrent) return 1;
-			const labOrder = a.lab.localeCompare(b.lab, undefined, { sensitivity: "base" });
-			if (labOrder !== 0) return labOrder;
 			return a.id.localeCompare(b.id, undefined, { sensitivity: "base" });
 		});
 		return sorted;

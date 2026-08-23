@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { SettingsManager } from "../src/core/settings-manager.ts";
+import {
+	resolveModelContextSettings,
+	SettingsManager,
+	validateModelContextSettings,
+} from "../src/core/settings-manager.ts";
 import { parseTokenCount } from "../src/modes/interactive/components/model-config-selectors.ts";
 
 describe("parseTokenCount", () => {
@@ -48,5 +52,31 @@ describe("per-model context settings", () => {
 
 		sm.setModelContextSettings("deepinfra", "deepseek-ai/Pro", { compactionBoundary: undefined });
 		expect(sm.getModelContextSettings("deepinfra", "deepseek-ai/Pro")).toEqual({});
+	});
+
+	it("validates both limits against the model and each other", () => {
+		expect(
+			validateModelContextSettings({ maxContext: 160_000, compactionBoundary: 120_000 }, 200_000),
+		).toBeUndefined();
+		expect(validateModelContextSettings({ maxContext: 0 }, 200_000)).toBe(
+			"Max context must be a positive whole number.",
+		);
+		expect(validateModelContextSettings({ maxContext: 250_000 }, 200_000)).toBe(
+			"Max context must be at most the model spec (200000).",
+		);
+		expect(validateModelContextSettings({ maxContext: 160_000, compactionBoundary: 160_000 }, 200_000)).toBe(
+			"Compaction boundary must be less than max context (160000).",
+		);
+	});
+
+	it("ignores invalid persisted values at runtime", () => {
+		expect(resolveModelContextSettings({ maxContext: 0, compactionBoundary: -1 }, 200_000)).toEqual({
+			contextWindow: 200_000,
+			compactionBoundary: undefined,
+		});
+		expect(resolveModelContextSettings({ maxContext: 250_000, compactionBoundary: 160_000 }, 200_000)).toEqual({
+			contextWindow: 200_000,
+			compactionBoundary: 160_000,
+		});
 	});
 });

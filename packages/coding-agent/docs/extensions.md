@@ -2478,7 +2478,7 @@ Extensions can interact with users via `ctx.ui` methods and customize how messag
 - Async operations with cancel (BorderedLoader)
 - Settings toggles (SettingsList)
 - Status indicators (setStatus)
-- Working message, visibility, and indicator during streaming (`setWorkingMessage`, `setWorkingVisible`, `setWorkingIndicator`)
+- Working and hidden-thinking indicators during streaming (`setWorkingMessage`, `setWorkingVisible`, `setWorkingIndicator`, `setThinkingIndicator`)
 - Widgets above/below editor (setWidget)
 - Autocomplete providers layered on top of built-in slash/path completion (addAutocompleteProvider)
 - Custom footers (setFooter)
@@ -2579,6 +2579,10 @@ ctx.ui.setWorkingIndicator({
 });
 ctx.ui.setWorkingIndicator({ frames: [] });  // Hide indicator
 ctx.ui.setWorkingIndicator();  // Restore default spinner
+
+// Hidden-thinking indicator (same options, configured independently)
+ctx.ui.setThinkingIndicator({ frames: [ctx.ui.theme.fg("thinkingText", "🧠")] });
+ctx.ui.setThinkingIndicator();  // Restore default thinking animation
 
 // Widget above editor (default)
 ctx.ui.setWidget("my-widget", ["Line 1", "Line 2"]);

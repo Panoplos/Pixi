@@ -163,6 +163,9 @@ export interface ExtensionUIContext {
 	 */
 	setWorkingIndicator(options?: WorkingIndicatorOptions): void;
 
+	/** Configure the indicator used while hidden thinking is streaming. Omit the argument to restore the default. */
+	setThinkingIndicator(options?: WorkingIndicatorOptions): void;
+
 	/** Set the label shown for hidden thinking blocks. Call with no argument to restore default. */
 	setHiddenThinkingLabel(label?: string): void;
 

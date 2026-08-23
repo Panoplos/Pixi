@@ -188,6 +188,10 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			// Working indicator customization not supported in RPC mode - requires TUI loader access
 		},
 
+		setThinkingIndicator(_options?: WorkingIndicatorOptions): void {
+			// Thinking indicator customization not supported in RPC mode - requires TUI loader access
+		},
+
 		setHiddenThinkingLabel(_label?: string): void {
 			// Hidden thinking label not supported in RPC mode - requires TUI message rendering access
 		},
