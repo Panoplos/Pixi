@@ -10,19 +10,42 @@
 - Added aggregate tool-activity sections: consecutive tool calls collapse into a live summary, while visible assistant text and standalone `write`/`edit` calls split sections. `Ctrl+o` expands and navigates tool blocks.
 - Added live hidden-thinking timing: the working status temporarily becomes `Thinking...`, then a `Thought for ...` entry is added to the live timeline. Restored sessions continue to omit hidden thinking.
 - Added a `❯ ` input prefix with the optional `promptPrefix` theme token, plus independently configurable working and thinking indicators for extensions.
+- Added transcript usage notices for compaction and branch summaries when cache miss notices are enabled.
+- Added `session_compact_failed` extension events so compaction failures and aborts expose their reason, retry state, source, and error message to handlers ([#8175](https://github.com/earendil-works/pi/issues/8175)).
 
 ### Changed
 
 - Reworked tool block layout and colors, including line-numbered write/edit output, full-width edit diff backgrounds, and a themeable `toolBodyBg` for successful read/bash output.
 - Collapsed the interactive footer to one status line containing cwd/branch, cache hit rate, context usage, auto-compaction state, and model/effort information.
 - Changed `Ctrl+o` expand navigation to include standalone `write`/`edit` blocks alongside aggregate sections.
+- Changed Bun release archives to ship the native clipboard binary only inside the wrapper package, removing a duplicate platform package from each archive.
+- Changed package resource glob expansion to use Node.js's built-in implementation with deterministic visible-path matching, reducing the installed runtime dependency tree.
+- Changed the bundled Node.js runtime to load jiti only when importing an extension and Babel only when uncached source needs transformation, reducing CLI startup time and bundle size.
+- Changed syntax highlighting to initialize only twenty common languages eagerly and defer the remaining grammars until after the initial TUI render, reducing CLI startup time.
+- Changed the Node.js CLI and RPC entrypoints to load a bundled runtime, reducing startup filesystem reads while keeping the public library and legacy module paths on the modular runtime for normal dependency identity.
+- Changed session sharing to render clickable terminal links and Radius shares to display only the artifact's canonical URL.
 
 ### Fixed
 
 - Fixed the footer hiding the reasoning/effort level for models whose support is derived from the thinking-level map rather than a top-level reasoning flag.
 - Fixed hidden-thinking timing for providers that omit `thinking_end` and prevented mid-turn visibility changes from desynchronizing the indicator.
 - Fixed expand-status messages stacking during rapid navigation and corrected fullscreen flash routing.
+- Fixed writes to `auth.json` and `models-store.json` overriding administrator-managed file permissions and ACLs ([#7779](https://github.com/earendil-works/pi/issues/7779)).
+- Fixed UTF-8 BOM markers preventing frontmatter and user configuration files from loading ([#8337](https://github.com/earendil-works/pi/issues/8337)).
+- Fixed invalid settings files being easy to miss during interactive startup by rendering warnings with the file path inside the TUI ([#7829](https://github.com/earendil-works/pi/issues/7829)).
+- Fixed the subagent example repeatedly prompting before running project-local agents in trusted repositories ([#8261](https://github.com/earendil-works/pi/issues/8261)).
+- Fixed npm package update checks treating older registry versions as available updates, preventing `pi update` from downgrading already-newer installed packages ([#8226](https://github.com/earendil-works/pi/issues/8226)).
+- Fixed built-in llama.cpp models disappearing from `/model` when `/llama` refreshed a configured server under `PI_OFFLINE`, and included idle-slept `sleeping` router models in the selectable catalog ([#8167](https://github.com/earendil-works/pi/issues/8167)).
+- Fixed `pi.registerFlag()` accepting default values that do not match the declared flag type ([#8064](https://github.com/earendil-works/pi/issues/8064)).
 - Fixed Z.AI Coding Plan defaults referencing the removed GLM-5.1 model ([#8096](https://github.com/earendil-works/pi/issues/8096)).
+- Fixed repeated ambiguous truncated-response recovery being mislabeled as context overflow ([#8130](https://github.com/earendil-works/pi/issues/8130)).
+- Fixed duplicate fullscreen right-click paste in VS Code-based terminals on Windows ([#8186](https://github.com/earendil-works/pi/issues/8186)).
+- Fixed llama.cpp login guidance to direct users to `/llama` before `/model` when no local models are loaded ([#8203](https://github.com/earendil-works/pi/issues/8203)).
+- Fixed hung pi.dev model catalog requests consuming the entire refresh deadline without retrying ([#8198](https://github.com/earendil-works/pi/issues/8198)).
+- Fixed inherited Xiaomi model catalogs listing shut-down MiMo V2 models in `/model` and `--list-models` ([#8187](https://github.com/earendil-works/pi/issues/8187)).
+- Fixed branch summary entries recording the navigation destination in `fromId` instead of the pre-navigation source leaf.
+- Fixed threshold auto-compaction being skipped when providers omit streaming usage data ([#8328](https://github.com/earendil-works/pi/issues/8328)).
+- Fixed dash-prefixed prompts being parsed as options by supporting `--` as an end-of-options delimiter ([#7269](https://github.com/earendil-works/pi/issues/7269)).
 
 ## [0.84.2] - 2026-08-14
 
@@ -54,6 +77,8 @@
 
 ### Fixed
 
+- Fixed root Markdown files such as `README.md` and `AGENTS.md` in skill directories being reported as broken skills unless they declare valid skill frontmatter ([#7805](https://github.com/earendil-works/pi/issues/7805)).
+- Fixed single-object `edit` tool inputs failing validation by accepting them as one-edit arrays in both coding-agent and harness edit tools ([#7835](https://github.com/earendil-works/pi/issues/7835)).
 - Fixed managed-tool downloads delaying TUI startup and hiding diagnostics in fullscreen mode by mounting the TUI first and showing download progress and warnings inside it.
 - Fixed opening a model selector immediately after startup cancelling and restarting the in-progress model catalog refresh.
 - Fixed inherited GitHub Copilot login triggering API rate limits while enabling model policies by limiting concurrent policy updates ([#6187](https://github.com/earendil-works/pi/issues/6187)).
