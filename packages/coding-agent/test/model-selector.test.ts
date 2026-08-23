@@ -14,6 +14,8 @@ describe("modelLab", () => {
 		expect(modelLab({ id: "deepseek-ai/DeepSeek-V4-Pro-0813", provider: "deepinfra" } as never)).toBe("deepseek-ai");
 		expect(modelLab({ id: "meta-llama/Llama-3.3", provider: "deepinfra" } as never)).toBe("meta-llama");
 		expect(modelLab({ id: "deepseek-chat", provider: "deepseek" } as never)).toBe("deepseek");
+		// OpenRouter `~`-prefixed aliases group with their real lab
+		expect(modelLab({ id: "~anthropic/claude-sonnet-latest", provider: "openrouter" } as never)).toBe("anthropic");
 	});
 });
 

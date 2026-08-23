@@ -32,7 +32,10 @@ interface ScopedModelItem {
 
 /** Grouping key for the model list: the `<lab>/` prefix of the id, or the provider when there is none. */
 export function modelLab(model: Model<any>): string {
-	return model.id.includes("/") ? model.id.slice(0, model.id.indexOf("/")) : model.provider;
+	const prefix = model.id.includes("/") ? model.id.slice(0, model.id.indexOf("/")) : model.provider;
+	// OpenRouter aliases like `~anthropic/claude-sonnet-latest` use a `~` prefix;
+	// group them under the same lab as their non-alias siblings.
+	return prefix.startsWith("~") ? prefix.slice(1) : prefix;
 }
 
 interface DefaultModelReference {
