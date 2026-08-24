@@ -148,8 +148,8 @@ export class ToolActivitySummaryComponent extends Container {
 		this.ui.requestRender();
 	}
 
-	/** Bold integer counts in an aggregate summary phrase (e.g. `read 3 files`). */
+	/** Bold integer counts and commit hashes in an aggregate summary phrase (e.g. `read 3 files`, `Committed 9be7da6`). */
 	private boldCounts(phrase: string): string {
-		return phrase.replace(/\b\d+\b/g, (m) => theme.bold(m));
+		return phrase.replace(/\b\d+\b|\b[0-9a-f]{7,40}\b/g, (m) => theme.bold(m));
 	}
 }

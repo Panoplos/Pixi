@@ -1,5 +1,6 @@
 import { type AssistantMessage, fauxAssistantMessage, fauxThinking } from "@earendil-works/pi-ai";
 import { setKeybindings } from "@earendil-works/pi-tui";
+import chalk from "chalk";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { type ActivityToolCall, extractCommitHash, summarizeSection } from "../src/core/tool-activity-summary.ts";
@@ -249,5 +250,23 @@ describe("ToolActivitySummaryComponent hint markup", () => {
 		// Hint rendered in grey (muted color code).
 		expect(summary).toContain("128;128;128");
 		expect(summary).toMatch(/ran \d+ shell command/); // phrase still present
+	});
+
+	it("styles the commit hash with the same emphasis as counts", () => {
+		// theme.bold goes through chalk, which disables styling for non-TTY stdout.
+		chalk.level = 1;
+
+		const section = sectionHarness();
+		section.addOrUpdateTool("bash", "gc", { command: "git commit -m fix" });
+		section.updateResult("gc", {
+			content: [{ type: "text", text: "[main 9be7da6] fix" }],
+			isError: false,
+		});
+		section.addOrUpdateTool("bash", "sh", { command: "ls" });
+
+		const lines = section.render(200);
+		const summary = lines.join("\n");
+		// Hash gets the same bold treatment as the integer counts.
+		expect(summary).toContain("\u001b[1m9be7da6\u001b[22m");
 	});
 });
