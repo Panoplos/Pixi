@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added atomic `[Image N]` marker support to `Editor`: `insertImageMarker()` inserts a placeholder that behaves as a single character for cursor movement and deletion, with `getImageAttachments()`, `clearImages()`, and an `onImagesDeleted` callback so hosts can manage the underlying files.
+
 ### Fixed
 
 - Fixed duplicate fullscreen right-click paste in VS Code-based terminals on Windows ([#8186](https://github.com/earendil-works/pi/issues/8186)).

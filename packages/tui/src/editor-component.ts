@@ -32,6 +32,9 @@ export interface EditorComponent extends Component {
 	/** Called when text changes */
 	onChange?: (text: string) => void;
 
+	/** Fired when image markers are deleted from the input (backspace, delete, selection removal). */
+	onImagesDeleted?: (ids: number[]) => void;
+
 	// =========================================================================
 	// History support (optional)
 	// =========================================================================
@@ -45,6 +48,19 @@ export interface EditorComponent extends Component {
 
 	/** Insert text at current cursor position */
 	insertTextAtCursor?(text: string): void;
+
+	/**
+	 * Register an attached image and insert its `[Image N]` marker at the cursor.
+	 * The marker is atomic for cursor movement and deletion; removing it fires
+	 * `onImagesDeleted` so the host can clean up the underlying file.
+	 */
+	insertImageMarker?(filePath: string): number;
+
+	/** Currently pending image attachments, ordered by marker ID. */
+	getImageAttachments?(): Array<{ id: number; path: string }>;
+
+	/** Drop all pending image attachments without firing deletion callbacks. */
+	clearImages?(): void;
 
 	/**
 	 * Get text with any markers expanded (e.g., paste markers).

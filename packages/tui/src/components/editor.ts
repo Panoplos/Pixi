@@ -24,38 +24,52 @@ const PASTE_MARKER_REGEX = /\[paste #(\d+)( (\+\d+ lines|\d+ chars))?\]/g;
 /** Non-global version for single-segment testing. */
 const PASTE_MARKER_SINGLE = /^\[paste #(\d+)( (\+\d+ lines|\d+ chars))?\]$/;
 
+/** Regex matching attached-image markers like `[Image 1]`. */
+const IMAGE_MARKER_REGEX = /\[Image (\d+)\]/g;
+
+const IMAGE_MARKER_SINGLE = /^\[Image (\d+)\]$/;
+
 /** Check if a segment is a paste marker (i.e. was merged by segmentWithMarkers). */
 function isPasteMarker(segment: string): boolean {
 	return segment.length >= 10 && PASTE_MARKER_SINGLE.test(segment);
 }
 
+/** A family of atomic markers: regex + validity check for a specific ID. */
+interface MarkerRule {
+	regex: RegExp;
+	isValid(id: number): boolean;
+}
+
 /**
  * A segmenter that wraps Intl.Segmenter and merges graphemes that fall
- * within paste markers into single atomic segments.  This makes cursor
- * movement, deletion, word-wrap, etc. treat paste markers as single units.
+ * within atomic markers into single segments. This makes cursor movement,
+ * deletion, word-wrap, etc. treat each marker as one unit.
  *
- * Only markers whose numeric ID exists in `validIds` are merged.
+ * Only markers whose numeric ID passes its rule's validity check are merged.
  */
 function segmentWithMarkers(
 	text: string,
 	baseSegmenter: Intl.Segmenter,
-	validIds: Set<number>,
+	rules: MarkerRule[],
 ): Iterable<Intl.SegmentData> {
-	// Fast path: no paste markers in the text or no valid IDs.
-	if (validIds.size === 0 || !text.includes("[paste #")) {
+	// Fast path: no markers in the text or no valid IDs.
+	if (rules.length === 0 || (!text.includes("[paste #") && !text.includes("[Image "))) {
 		return baseSegmenter.segment(text);
 	}
 
 	// Find all marker spans with valid IDs.
 	const markers: Array<{ start: number; end: number }> = [];
-	for (const m of text.matchAll(PASTE_MARKER_REGEX)) {
-		const id = Number.parseInt(m[1]!, 10);
-		if (!validIds.has(id)) continue;
-		markers.push({ start: m.index, end: m.index + m[0].length });
+	for (const rule of rules) {
+		for (const m of text.matchAll(rule.regex)) {
+			const id = Number.parseInt(m[1]!, 10);
+			if (!rule.isValid(id)) continue;
+			markers.push({ start: m.index!, end: m.index! + m[0].length });
+		}
 	}
 	if (markers.length === 0) {
 		return baseSegmenter.segment(text);
 	}
+	markers.sort((a, b) => a.start - b.start);
 
 	// Build merged segment list.
 	const baseSegments = baseSegmenter.segment(text);
@@ -222,6 +236,8 @@ interface EditorSnapshot {
 	state: EditorState;
 	pastes: Map<number, string>;
 	pasteCounter: number;
+	images: Map<number, string>;
+	imageCounter: number;
 }
 
 interface LayoutLine {
@@ -319,6 +335,13 @@ export class Editor implements Component, Focusable {
 	private pastes: Map<number, string> = new Map();
 	private pasteCounter: number = 0;
 
+	/** Attached images: marker ID -> temp file path. */
+	private images: Map<number, string> = new Map();
+	private imageCounter: number = 0;
+
+	/** Fired when image markers are deleted from the text (backspace, delete, selection removal). */
+	onImagesDeleted?: (ids: number[]) => void;
+
 	// Bracketed paste mode buffering
 	private pasteBuffer: string = "";
 	private isInPaste: boolean = false;
@@ -370,9 +393,20 @@ export class Editor implements Component, Focusable {
 		return new Set(this.pastes.keys());
 	}
 
-	/** Segment text with paste-marker awareness, only merging markers with valid IDs. */
+	/** Marker rules for atomic segmentation: paste + attached-image markers. */
+	private markerRules(): MarkerRule[] {
+		const pastes = this.validPasteIds();
+		const images = new Set(this.images.keys());
+		if (pastes.size === 0 && images.size === 0) return [];
+		const rules: MarkerRule[] = [];
+		if (pastes.size > 0) rules.push({ regex: PASTE_MARKER_REGEX, isValid: (id) => pastes.has(id) });
+		if (images.size > 0) rules.push({ regex: IMAGE_MARKER_REGEX, isValid: (id) => images.has(id) });
+		return rules;
+	}
+
+	/** Segment text with marker awareness, only merging markers with valid IDs. */
 	private segment(text: string, mode: "word" | "grapheme"): Iterable<Intl.SegmentData> {
-		return segmentWithMarkers(text, mode === "word" ? wordSegmenter : graphemeSegmenter, this.validPasteIds());
+		return segmentWithMarkers(text, mode === "word" ? wordSegmenter : graphemeSegmenter, this.markerRules());
 	}
 
 	getPaddingX(): number {
@@ -1070,6 +1104,12 @@ export class Editor implements Component, Focusable {
 					.filter((id) => this.pastes.has(id)),
 			),
 		);
+		this.removeImages(
+			[...selectedText.matchAll(IMAGE_MARKER_REGEX)]
+				.map((match) => Number(match[1]))
+				.filter((id) => this.images.has(id)),
+			true,
+		);
 	}
 
 	private removePastes(removedIds: Set<number>): void {
@@ -1214,6 +1254,8 @@ export class Editor implements Component, Focusable {
 		if (this.getText() !== normalized) {
 			this.pushUndoSnapshot();
 		}
+		// Replacing the content discards any pending image attachments.
+		this.removeImages([...this.images.keys()]);
 		this.pastes.clear();
 		this.pasteCounter = 0;
 		this.setTextInternal(normalized);
@@ -1231,6 +1273,36 @@ export class Editor implements Component, Focusable {
 		this.lastAction = null;
 		this.exitHistoryBrowsing();
 		this.insertTextAtCursorInternal(text);
+	}
+
+	/**
+	 * Register an attached image and insert its `[Image N]` marker at the cursor.
+	 * The marker behaves as a single character for cursor movement and deletion;
+	 * removing it fires `onImagesDeleted` so the caller can clean up the file.
+	 */
+	insertImageMarker(filePath: string): number {
+		this.imageCounter++;
+		const id = this.imageCounter;
+		this.images.set(id, filePath);
+		this.insertTextAtCursor(`[Image ${id}]`);
+		return id;
+	}
+
+	/** Currently pending image attachments, ordered by marker ID. */
+	getImageAttachments(): Array<{ id: number; path: string }> {
+		return [...this.images].map(([id, path]) => ({ id, path }));
+	}
+
+	/** Drop all pending image attachments without firing deletion callbacks. */
+	clearImages(): void {
+		this.images.clear();
+		this.imageCounter = 0;
+	}
+
+	private removeImages(removedIds: number[], fireCallback = true): void {
+		if (removedIds.length === 0) return;
+		for (const id of removedIds) this.images.delete(id);
+		if (fireCallback) this.onImagesDeleted?.(removedIds);
 	}
 
 	/**
@@ -1487,6 +1559,7 @@ export class Editor implements Component, Focusable {
 			const lastGrapheme = graphemes[graphemes.length - 1];
 			const graphemeLength = lastGrapheme ? lastGrapheme.segment.length : 1;
 			const removedPasteId = lastGrapheme ? PASTE_MARKER_SINGLE.exec(lastGrapheme.segment)?.[1] : undefined;
+			const removedImageId = lastGrapheme ? IMAGE_MARKER_SINGLE.exec(lastGrapheme.segment)?.[1] : undefined;
 
 			const before = line.slice(0, this.state.cursorCol - graphemeLength);
 			const after = line.slice(this.state.cursorCol);
@@ -1494,6 +1567,7 @@ export class Editor implements Component, Focusable {
 			this.state.lines[this.state.cursorLine] = before + after;
 			this.setCursorCol(this.state.cursorCol - graphemeLength);
 			if (removedPasteId) this.removePastes(new Set([Number(removedPasteId)]));
+			if (removedImageId) this.removeImages([Number(removedImageId)]);
 		} else if (this.state.cursorLine > 0) {
 			this.pushUndoSnapshot();
 
@@ -1860,10 +1934,12 @@ export class Editor implements Component, Focusable {
 			const graphemes = [...this.segment(afterCursor, "grapheme")];
 			const firstGrapheme = graphemes[0];
 			const graphemeLength = firstGrapheme ? firstGrapheme.segment.length : 1;
+			const deletedImageId = firstGrapheme ? IMAGE_MARKER_SINGLE.exec(firstGrapheme.segment)?.[1] : undefined;
 
 			const before = currentLine.slice(0, this.state.cursorCol);
 			const after = currentLine.slice(this.state.cursorCol + graphemeLength);
 			this.state.lines[this.state.cursorLine] = before + after;
+			if (deletedImageId) this.removeImages([Number(deletedImageId)]);
 		} else if (this.state.cursorLine < this.state.lines.length - 1) {
 			this.pushUndoSnapshot();
 
@@ -2182,7 +2258,13 @@ export class Editor implements Component, Focusable {
 	}
 
 	private pushUndoSnapshot(): void {
-		this.undoStack.push({ state: this.state, pastes: this.pastes, pasteCounter: this.pasteCounter });
+		this.undoStack.push({
+			state: this.state,
+			pastes: this.pastes,
+			pasteCounter: this.pasteCounter,
+			images: new Map(this.images),
+			imageCounter: this.imageCounter,
+		});
 	}
 
 	private undo(): void {
@@ -2192,6 +2274,10 @@ export class Editor implements Component, Focusable {
 		Object.assign(this.state, snapshot.state);
 		this.pastes = snapshot.pastes;
 		this.pasteCounter = snapshot.pasteCounter;
+		// Restored markers whose temp files were already deleted become inert:
+		// attachment extraction on the consumer side skips files that no longer exist.
+		this.images = new Map(snapshot.images);
+		this.imageCounter = Math.max(snapshot.imageCounter, ...this.images.keys(), 0);
 		this.lastAction = null;
 		this.preferredVisualCol = null;
 		if (this.onChange) {

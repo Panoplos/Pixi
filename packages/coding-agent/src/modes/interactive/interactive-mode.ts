@@ -104,6 +104,8 @@ import { getChangelogPath, getNewEntries, normalizeChangelogLinks, parseChangelo
 import { copyToClipboard, readClipboardText } from "../../utils/clipboard.ts";
 import { extensionForImageMimeType, readClipboardImage } from "../../utils/clipboard-image.ts";
 import { parseGitUrl } from "../../utils/git.ts";
+import { processImage } from "../../utils/image-process.ts";
+import { detectSupportedImageMimeTypeFromFile } from "../../utils/mime.ts";
 import { openBrowser } from "../../utils/open-browser.ts";
 import { getCwdRelativePath } from "../../utils/paths.ts";
 import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
@@ -453,7 +455,10 @@ export class InteractiveMode {
 	private keybindings: KeybindingsManager;
 	private version: string;
 	private isInitialized = false;
-	private onInputCallback?: (text: string) => void;
+	private onInputCallback?: (input: { text: string; images: ImageContent[] }) => void;
+
+	/** Currently pending editor image attachments, keyed by marker ID. */
+	private pendingImageAttachments = new Map<number, { path: string; hash: string }>();
 	private pendingUserInputs: string[] = [];
 	private activeStatusIndicator: StatusIndicator | undefined = undefined;
 	private readonly idleStatus = new IdleStatus();
@@ -1201,9 +1206,9 @@ export class InteractiveMode {
 
 		// Main interactive loop
 		while (true) {
-			const userInput = await this.getUserInput();
+			const { text: userInput, images } = await this.getUserInput();
 			try {
-				await this.session.prompt(userInput);
+				await this.session.prompt(userInput, { images });
 			} catch (error: unknown) {
 				const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
 				this.showError(errorMessage);
@@ -2950,11 +2955,49 @@ export class InteractiveMode {
 			}
 		};
 
-		// Handle clipboard paste (triggered on Ctrl+V). Images are attached by path;
+		// Handle clipboard paste (triggered on Ctrl+V). Images are attached as [Image N] markers;
 		// otherwise, paste plain text from the system clipboard.
 		this.defaultEditor.onPasteImage = () => {
 			void this.handleClipboardPaste();
 		};
+
+		// Delete the temp file when an image marker is removed from the input.
+		this.defaultEditor.onImagesDeleted = (ids) => {
+			for (const id of ids) {
+				const pending = this.pendingImageAttachments.get(id);
+				if (!pending) continue;
+				this.pendingImageAttachments.delete(id);
+				fs.rm(pending.path, { force: true }, () => {});
+			}
+		};
+	}
+
+	/**
+	 * Take pending editor image attachments: convert each temp file into an image
+	 * attachment (skipping files that no longer exist) and clear the editor's
+	 * image state. Returns attachments in marker order.
+	 */
+	private async takeEditorImages(): Promise<ImageContent[]> {
+		const attachments = this.editor.getImageAttachments?.() ?? [];
+		this.editor.clearImages?.();
+		this.pendingImageAttachments.clear();
+		const images: ImageContent[] = [];
+		for (const { path: filePath } of attachments) {
+			try {
+				const mimeType = await detectSupportedImageMimeTypeFromFile(filePath);
+				if (!mimeType) continue;
+				const content = await fs.promises.readFile(filePath);
+				const processed = await processImage(content, mimeType);
+				if (processed.ok) {
+					images.push({ type: "image", mimeType: processed.mimeType, data: processed.data });
+				}
+			} catch {
+				// File already gone (e.g. undo restored a deleted marker): skip.
+			} finally {
+				fs.rm(filePath, { force: true }, () => {});
+			}
+		}
+		return images;
 	}
 
 	private async handleRightClickPaste(): Promise<void> {
@@ -2975,13 +3018,27 @@ export class InteractiveMode {
 		try {
 			const image = await readClipboardImage();
 			if (image) {
+				// Ignore re-pastes of an image that is already attached.
+				const hash = crypto.createHash("sha256").update(image.bytes).digest("hex");
+				if ([...this.pendingImageAttachments.values()].some((a) => a.hash === hash)) {
+					this.showStatus("Image is already attached");
+					return;
+				}
+
 				const tmpDir = os.tmpdir();
 				const ext = extensionForImageMimeType(image.mimeType) ?? "png";
 				const fileName = `pi-clipboard-${crypto.randomUUID()}.${ext}`;
 				const filePath = path.join(tmpDir, fileName);
 				fs.writeFileSync(filePath, Buffer.from(image.bytes));
 
-				this.editor.insertTextAtCursor?.(filePath);
+				const markerId = this.editor.insertImageMarker?.(filePath);
+				if (markerId === undefined) {
+					// Editor has no image-marker support; fall back to the raw path.
+					this.editor.insertTextAtCursor?.(filePath);
+				} else {
+					this.pendingImageAttachments.set(markerId, { path: filePath, hash });
+					this.showStatus(`[Image ${markerId}] attached`);
+				}
 				this.ui.requestRender();
 				return;
 			}
@@ -3172,6 +3229,8 @@ export class InteractiveMode {
 					this.editor.setText("");
 					await this.session.prompt(text);
 				} else {
+					// Compaction queue is text-only; drop any pending attachments.
+					await this.takeEditorImages();
 					this.queueCompactionMessage(text, "steer");
 				}
 				return;
@@ -3181,8 +3240,9 @@ export class InteractiveMode {
 			// This handles extension commands (execute immediately), prompt template expansion, and queueing
 			if (this.session.isStreaming) {
 				this.editor.addToHistory?.(text);
+				const images = await this.takeEditorImages();
 				this.editor.setText("");
-				await this.session.prompt(text, { streamingBehavior: "steer" });
+				await this.session.prompt(text, { streamingBehavior: "steer", images });
 				this.updatePendingMessagesDisplay();
 				this.ui.requestRender();
 				return;
@@ -3192,8 +3252,9 @@ export class InteractiveMode {
 			// First, move any pending bash components to chat
 			this.flushPendingBashComponents();
 
+			const images = await this.takeEditorImages();
 			if (this.onInputCallback) {
-				this.onInputCallback(text);
+				this.onInputCallback({ text, images });
 			} else {
 				this.pendingUserInputs.push(text);
 			}
@@ -4034,16 +4095,16 @@ export class InteractiveMode {
 		);
 	}
 
-	async getUserInput(): Promise<string> {
+	async getUserInput(): Promise<{ text: string; images: ImageContent[] }> {
 		const queuedInput = this.pendingUserInputs.shift();
 		if (queuedInput !== undefined) {
-			return queuedInput;
+			return { text: queuedInput, images: [] };
 		}
 
 		return new Promise((resolve) => {
-			this.onInputCallback = (text: string) => {
+			this.onInputCallback = (input) => {
 				this.onInputCallback = undefined;
-				resolve(text);
+				resolve(input);
 			};
 		});
 	}

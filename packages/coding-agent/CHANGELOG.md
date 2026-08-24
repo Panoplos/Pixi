@@ -10,6 +10,7 @@
 - Added aggregate tool-activity sections: consecutive tool calls collapse into a live summary, while visible assistant text and standalone `write`/`edit` calls split sections. `Ctrl+o` expands and navigates tool blocks.
 - Added live hidden-thinking timing: the working status temporarily becomes `Thinking...`, then a `Thought for ...` entry is added to the live timeline. Restored sessions continue to omit hidden thinking.
 - Added a `❯ ` input prefix with the optional `promptPrefix` theme token, plus independently configurable working and thinking indicators for extensions.
+- Changed clipboard image paste to insert an atomic `[Image N]` marker instead of the temp file path: re-pasting the same image is ignored, removing a marker deletes its temp file, and submitted markers are attached to the message as inline images.
 - Added transcript usage notices for compaction and branch summaries when cache miss notices are enabled.
 - Added `session_compact_failed` extension events so compaction failures and aborts expose their reason, retry state, source, and error message to handlers ([#8175](https://github.com/earendil-works/pi/issues/8175)).
 - Added DeepInfra to `/login`, the provider docs, and the default model table (`deepseek-ai/DeepSeek-V4-Flash-0731`).
