@@ -193,6 +193,14 @@ describe("Token Statistics on Abort", () => {
 		});
 	});
 
+	describe.skipIf(!process.env.DEEPINFRA_API_KEY)("DeepInfra Provider", () => {
+		const llm = getModel("deepinfra", "deepseek-ai/DeepSeek-V4-Flash-0731");
+
+		it("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
+			await testTokensOnAbort(llm);
+		});
+	});
+
 	describe.skipIf(!process.env.BASETEN_API_KEY)("Baseten Provider", () => {
 		const llm = getModel("baseten", "zai-org/GLM-5.2");
 

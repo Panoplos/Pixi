@@ -624,6 +624,7 @@ function detectOpenAICompletionsCompat(model: Model<"openai-completions">): Open
 	const isAntLing = provider === "ant-ling" || baseUrl.includes("api.ant-ling.com");
 	const isTogetherReasoningOnly = isTogether && TOGETHER_REASONING_ONLY_MODELS.has(model.id);
 	const isDeepSeek = provider === "deepseek" || baseUrl.toLowerCase().includes("deepseek.com");
+	const isDeepInfra = provider === "deepinfra" || baseUrl.includes("api.deepinfra.com");
 
 	const isNonStandard =
 		isNvidia ||
@@ -640,7 +641,8 @@ function detectOpenAICompletionsCompat(model: Model<"openai-completions">): Open
 		baseUrl.includes("opencode.ai") ||
 		isCloudflareWorkersAI ||
 		isCloudflareAiGateway ||
-		isAntLing;
+		isAntLing ||
+		isDeepInfra;
 
 	const useMaxTokens =
 		baseUrl.includes("chutes.ai") ||
@@ -650,7 +652,8 @@ function detectOpenAICompletionsCompat(model: Model<"openai-completions">): Open
 		isTogether ||
 		isNvidia ||
 		isAntLing ||
-		isZai;
+		isZai ||
+		isDeepInfra;
 
 	const isGrok = provider === "xai" || baseUrl.includes("api.x.ai");
 	const isOpenRouterDeveloperRoleModel =
@@ -1043,6 +1046,71 @@ async function fetchNvidiaNimModelIds(): Promise<Map<string, string>> {
 		console.error("Failed to fetch NVIDIA NIM models:", error);
 		if (generatorOptions.strict) throw error;
 		return new Map();
+	}
+}
+
+/**
+ * DeepInfra's public model catalog (no API key required). Only chat models are
+ * included; embeddings/image/audio/video models are out of scope.
+ */
+interface DeepInfraCatalogModel {
+	id: string;
+	name?: string;
+	metadata?: {
+		context_length?: number;
+		max_tokens?: number;
+		pricing?: {
+			input_tokens?: number;
+			output_tokens?: number;
+			cache_read_tokens?: number;
+		};
+		tags?: string[];
+	};
+}
+
+const DEEPINFRA_BASE_URL = "https://api.deepinfra.com/v1/openai";
+
+async function fetchDeepInfraModels(): Promise<Model<any>[]> {
+	try {
+		console.log("Fetching models from DeepInfra API...");
+		const response = await fetch(`${DEEPINFRA_BASE_URL}/models`);
+		if (!response.ok) throw new Error(`DeepInfra API returned ${response.status}`);
+		const data = (await response.json()) as { data?: DeepInfraCatalogModel[] };
+
+		const models: Model<any>[] = [];
+		for (const raw of data.data ?? []) {
+			const metadata = raw.metadata ?? {};
+			const tags = metadata.tags ?? [];
+			if (!tags.includes("chat")) continue;
+			const reasoning = tags.includes("reasoning");
+			const hasVision = tags.includes("vision") || tags.includes("vlm");
+			// Pricing is $/1M tokens; keep 4 decimals like models.dev catalogs.
+			const round4 = (value: number) => Math.round(value * 10_000) / 10_000;
+			models.push({
+				id: raw.id,
+				name: raw.name ?? raw.id.split("/").pop() ?? raw.id,
+				api: "openai-completions",
+				baseUrl: DEEPINFRA_BASE_URL,
+				provider: "deepinfra",
+				reasoning,
+				...(reasoning ? { thinkingLevelMap: { off: "none" } as NonNullable<Model<any>["thinkingLevelMap"]> } : {}),
+				input: hasVision ? ["text", "image"] : ["text"],
+				cost: {
+					input: round4(metadata.pricing?.input_tokens ?? 0),
+					output: round4(metadata.pricing?.output_tokens ?? 0),
+					cacheRead: round4(metadata.pricing?.cache_read_tokens ?? metadata.pricing?.input_tokens ?? 0),
+					cacheWrite: 0,
+				},
+				contextWindow: metadata.context_length ?? 128_000,
+				maxTokens: metadata.max_tokens ?? 4096,
+			});
+		}
+		console.log(`Fetched ${models.length} chat models from DeepInfra`);
+		return models;
+	} catch (error) {
+		console.error("Failed to fetch DeepInfra models:", error);
+		if (generatorOptions.strict) throw error;
+		return [];
 	}
 }
 
@@ -2333,11 +2401,12 @@ async function generateModels() {
 	// OpenRouter: xAI and other providers (excluding Anthropic, Google, OpenAI)
 	// AI Gateway: OpenAI-compatible catalog with tool-capable models
 	const modelsDevModels = await loadModelsDevData();
+	const deepInfraModels = await fetchDeepInfraModels();
 	const openRouterModels = await fetchOpenRouterModels();
 	const aiGatewayModels = await fetchAiGatewayModels();
 
 	// Combine models (models.dev has priority)
-	const allModels = [...modelsDevModels, ...openRouterModels, ...aiGatewayModels].filter(
+	const allModels = [...modelsDevModels, ...openRouterModels, ...aiGatewayModels, ...deepInfraModels].filter(
 		(model) =>
 			!(model.provider === "xai" && XAI_BUILTIN_EXCLUDED_MODEL_IDS.has(model.id)) &&
 			!((model.provider === "opencode" || model.provider === "opencode-go") && model.id === "gpt-5.3-codex-spark"),

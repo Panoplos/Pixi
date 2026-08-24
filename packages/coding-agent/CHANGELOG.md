@@ -5,6 +5,7 @@
 ### Added
 
 - Added transcript usage notices for compaction and branch summaries when cache miss notices are enabled.
+- Added DeepInfra to `/login`, the provider docs, and the default model table (`deepseek-ai/DeepSeek-V4-Flash-0731`).
 
 ### Changed
 
