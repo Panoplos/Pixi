@@ -386,6 +386,26 @@ describe("AI Providers Empty Message Tests", () => {
 		});
 	});
 
+	describe.skipIf(!process.env.DEEPINFRA_API_KEY)("DeepInfra Provider Empty Messages", () => {
+		const llm = getModel("deepinfra", "deepseek-ai/DeepSeek-V4-Flash-0731");
+
+		it("should handle empty content array", { retry: 3, timeout: 30000 }, async () => {
+			await testEmptyMessage(llm);
+		});
+
+		it("should handle empty string content", { retry: 3, timeout: 30000 }, async () => {
+			await testEmptyStringMessage(llm);
+		});
+
+		it("should handle whitespace-only content", { retry: 3, timeout: 30000 }, async () => {
+			await testWhitespaceOnlyMessage(llm);
+		});
+
+		it("should handle empty assistant message in conversation", { retry: 3, timeout: 30000 }, async () => {
+			await testEmptyAssistantMessage(llm);
+		});
+	});
+
 	describe.skipIf(!process.env.BASETEN_API_KEY)("Baseten Provider Empty Messages", () => {
 		const llm = getModel("baseten", "zai-org/GLM-5.2");
 		const options = { reasoningEffort: "high" } satisfies StreamOptionsWithExtras;

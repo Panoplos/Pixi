@@ -348,6 +348,17 @@ describe("Context overflow error handling", () => {
 		}, 120000);
 	});
 
+	describe.skipIf(!process.env.DEEPINFRA_API_KEY)("DeepInfra", () => {
+		it("Flash - should detect overflow via isContextOverflow", async () => {
+			const model = getModel("deepinfra", "deepseek-ai/DeepSeek-V4-Flash-0731");
+			const result = await testContextOverflow(model, process.env.DEEPINFRA_API_KEY!);
+			logResult(result);
+
+			expect(result.stopReason).toBe("error");
+			expect(isContextOverflow(result.response, model.contextWindow)).toBe(true);
+		}, 120000);
+	});
+
 	// =============================================================================
 	// z.ai
 	// Special case: may return explicit overflow error text, may accept overflow silently,

@@ -9,6 +9,7 @@
 ### Added
 
 - Added provider-neutral `toolChoice` support to simple stream requests.
+- Added DeepInfra as a built-in provider: the public model catalog is hydrated into `src/providers/data/deepinfra.json` by `scripts/generate-models.ts` (chat models only), with OpenAI-compatible auth via `DEEPINFRA_API_KEY` and `reasoning_effort` thinking support (`off` mapped to `none`).
 - Added China-specific ZAI Coding Plan models, including GLM-4.6V vision support, and API-equivalent usage cost estimates for models with published PAYG prices ([#8220](https://github.com/earendil-works/pi/issues/8220)).
 
 ### Fixed

@@ -12,24 +12,27 @@
 - Added a `❯ ` input prefix with the optional `promptPrefix` theme token, plus independently configurable working and thinking indicators for extensions.
 - Added transcript usage notices for compaction and branch summaries when cache miss notices are enabled.
 - Added `session_compact_failed` extension events so compaction failures and aborts expose their reason, retry state, source, and error message to handlers ([#8175](https://github.com/earendil-works/pi/issues/8175)).
+- Added DeepInfra to `/login`, the provider docs, and the default model table (`deepseek-ai/DeepSeek-V4-Flash-0731`).
 
 ### Changed
 
 - Reworked tool block layout and colors, including line-numbered write/edit output, full-width edit diff backgrounds, and a themeable `toolBodyBg` for successful read/bash output.
 - Collapsed the interactive footer to one status line containing cwd/branch, cache hit rate, context usage, auto-compaction state, and model/effort information.
 - Changed `Ctrl+o` expand navigation to include standalone `write`/`edit` blocks alongside aggregate sections.
+- Changed Windows and WSL keybinding defaults to avoid terminal-reserved shortcuts for image paste, model cycling, editor undo, fullscreen transcript navigation and search, and message queueing ([#8372](https://github.com/earendil-works/pi/issues/8372)).
 - Changed Bun release archives to ship the native clipboard binary only inside the wrapper package, removing a duplicate platform package from each archive.
 - Changed package resource glob expansion to use Node.js's built-in implementation with deterministic visible-path matching, reducing the installed runtime dependency tree.
 - Changed the bundled Node.js runtime to load jiti only when importing an extension and Babel only when uncached source needs transformation, reducing CLI startup time and bundle size.
 - Changed syntax highlighting to initialize only twenty common languages eagerly and defer the remaining grammars until after the initial TUI render, reducing CLI startup time.
 - Changed the Node.js CLI and RPC entrypoints to load a bundled runtime, reducing startup filesystem reads while keeping the public library and legacy module paths on the modular runtime for normal dependency identity.
-- Changed session sharing to render clickable terminal links and Radius shares to display only the artifact's canonical URL.
+- Changed session sharing to render clickable terminal links, display only the canonical Radius artifact URL, and include the current system prompt and active tool definitions in Radius session shares.
 
 ### Fixed
 
 - Fixed the footer hiding the reasoning/effort level for models whose support is derived from the thinking-level map rather than a top-level reasoning flag.
 - Fixed hidden-thinking timing for providers that omit `thinking_end` and prevented mid-turn visibility changes from desynchronizing the indicator.
 - Fixed expand-status messages stacking during rapid navigation and corrected fullscreen flash routing.
+- Fixed `models.json` typings omitting the documented OpenAI-compatible `compat.supportsFinishReason` provider and model override ([#8460](https://github.com/earendil-works/pi/issues/8460)).
 - Fixed writes to `auth.json` and `models-store.json` overriding administrator-managed file permissions and ACLs ([#7779](https://github.com/earendil-works/pi/issues/7779)).
 - Fixed UTF-8 BOM markers preventing frontmatter and user configuration files from loading ([#8337](https://github.com/earendil-works/pi/issues/8337)).
 - Fixed invalid settings files being easy to miss during interactive startup by rendering warnings with the file path inside the TUI ([#7829](https://github.com/earendil-works/pi/issues/7829)).

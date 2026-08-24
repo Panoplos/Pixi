@@ -44,6 +44,7 @@ export type KnownProvider =
 	| "radius"
 	| "nvidia"
 	| "deepseek"
+	| "deepinfra"
 	| "github-copilot"
 	| "xai"
 	| "groq"
