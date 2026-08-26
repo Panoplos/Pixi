@@ -114,7 +114,7 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		component.updateResult({ content: [], details: { diff: "+1 after", firstChangedLine: 1 }, isError: false });
 		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("edit");
+		expect(rendered).toContain("Edit(");
 		expect(rendered).toContain("README.md");
 		expect(rendered).not.toContain(":1");
 	});
@@ -385,9 +385,32 @@ describe("ToolExecutionComponent parity", () => {
 			process.cwd(),
 		);
 		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("one");
-		expect(rendered).toContain("two");
+		expect(rendered).toContain("Write(");
+		expect(rendered).toContain("└ 1  one");
+		expect(rendered).toContain("  2  two");
 		expect(rendered).not.toContain("two\n\n");
+	});
+
+	test("keeps write previews transparent while retaining the error background", () => {
+		const component = new ToolExecutionComponent(
+			"write",
+			"tool-write-background",
+			{ path: "README.md", content: "one" },
+			{},
+			createWriteToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
+		expect(component.render(120).join("\n")).not.toContain(theme.getBgAnsi("toolPendingBg"));
+
+		component.updateResult({ content: [], details: undefined, isError: false }, false);
+		expect(component.render(120).join("\n")).not.toContain(theme.getBgAnsi("toolSuccessBg"));
+
+		component.updateResult(
+			{ content: [{ type: "text", text: "write failed" }], details: undefined, isError: true },
+			false,
+		);
+		expect(component.render(120).join("\n")).toContain(theme.getBgAnsi("toolErrorBg"));
 	});
 
 	test("trims trailing blank display lines from read results", () => {

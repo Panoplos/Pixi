@@ -1,3 +1,4 @@
+import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import * as Diff from "diff";
 import { theme } from "../theme/theme.ts";
 
@@ -144,4 +145,63 @@ export function renderDiff(diffText: string, _options: RenderDiffOptions = {}): 
 	}
 
 	return result.join("\n");
+}
+
+export type DiffRowKind = "context" | "removed" | "added";
+
+export interface DiffRow {
+	kind: DiffRowKind;
+	lineNum: string;
+	content: string;
+}
+
+export const BODY_JOINT = "└ ";
+export const BODY_JOINT_WIDTH = 2;
+
+export function parseDiffRows(diffText: string): { rows: DiffRow[]; added: number; removed: number } {
+	const rows: DiffRow[] = [];
+	let added = 0;
+	let removed = 0;
+
+	for (const line of diffText.split("\n")) {
+		const parsed = parseDiffLine(line);
+		if (!parsed) continue;
+
+		const kind: DiffRowKind = parsed.prefix === "+" ? "added" : parsed.prefix === "-" ? "removed" : "context";
+		if (kind === "added") added++;
+		if (kind === "removed") removed++;
+		rows.push({ kind, lineNum: parsed.lineNum.trim(), content: parsed.content });
+	}
+
+	return { rows, added, removed };
+}
+
+export class DiffRowsComponent implements Component {
+	private readonly rows: DiffRow[];
+
+	constructor(rows: DiffRow[]) {
+		this.rows = rows;
+	}
+
+	invalidate(): void {}
+
+	render(width: number): string[] {
+		const numWidth = Math.max(1, ...this.rows.map((row) => row.lineNum.length));
+		const indentWidth = Math.min(BODY_JOINT_WIDTH, Math.max(0, width));
+		const regionWidth = Math.max(0, width - indentWidth);
+		const indent = " ".repeat(indentWidth);
+
+		return this.rows.map((row) => {
+			if (regionWidth === 0) return indent;
+
+			const marker = row.kind === "context" ? "  " : row.kind === "removed" ? " -" : " +";
+			const body = `${row.lineNum.padStart(numWidth, " ")}${marker}${replaceTabs(row.content)}`;
+			const color = row.kind === "context" ? "toolDiffContext" : "toolDiffText";
+			const styled = truncateToWidth(theme.fg(color, body), regionWidth, "");
+			const padded = styled + " ".repeat(regionWidth - visibleWidth(styled));
+			if (row.kind === "context") return indent + padded;
+
+			return indent + theme.bg(row.kind === "removed" ? "toolDiffRemovedBg" : "toolDiffAddedBg", padded);
+		});
+	}
 }

@@ -3,7 +3,7 @@ import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { constants } from "fs";
 import { access as fsAccess, readFile as fsReadFile, writeFile as fsWriteFile } from "fs/promises";
 import { type Static, Type } from "typebox";
-import { renderDiff } from "../../modes/interactive/components/diff.ts";
+import { BODY_JOINT, DiffRowsComponent, parseDiffRows } from "../../modes/interactive/components/diff.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { splitBom } from "../../utils/text.ts";
 import { getExperimentalToolSampling } from "../experimental.ts";
@@ -223,17 +223,28 @@ function getRenderablePreviewInput(args: RenderableEditArgs | undefined): { path
 
 function formatEditCall(args: RenderableEditArgs | undefined, theme: Theme, cwd: string): string {
 	const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme, cwd);
-	return `${theme.fg("toolTitle", theme.bold("edit"))} ${pathDisplay}`;
+	return `${theme.fg("toolTitle", theme.bold("Edit"))}${theme.fg("toolTitle", "(")}${pathDisplay}${theme.fg("toolTitle", ")")}`;
+}
+
+function formatDiffSummary(added: number, removed: number, theme: Theme): string {
+	const lines = (count: number): string => `line${count === 1 ? "" : "s"}`;
+	let text = "No changes";
+	if (added > 0 && removed > 0) {
+		text = `Added ${theme.bold(String(added))} ${lines(added)} and Removed ${theme.bold(String(removed))} ${lines(removed)}`;
+	} else if (added > 0) {
+		text = `Added ${theme.bold(String(added))} ${lines(added)}`;
+	} else if (removed > 0) {
+		text = `Removed ${theme.bold(String(removed))} ${lines(removed)}`;
+	}
+	return theme.fg("toolOutput", `${BODY_JOINT}${text}`);
 }
 
 function formatEditResult(
-	args: RenderableEditArgs | undefined,
 	preview: EditPreview | undefined,
 	result: EditToolResultLike,
 	theme: Theme,
 	isError: boolean,
-): string | undefined {
-	const rawPath = str(args?.file_path ?? args?.path);
+): DiffRowsComponent | string | undefined {
 	const previewDiff = preview && !("error" in preview) ? preview.diff : undefined;
 	const previewError = preview && "error" in preview ? preview.error : undefined;
 	if (isError) {
@@ -249,7 +260,7 @@ function formatEditResult(
 
 	const resultDiff = result.details?.diff;
 	if (resultDiff && resultDiff !== previewDiff) {
-		return renderDiff(resultDiff, { filePath: rawPath ?? undefined });
+		return new DiffRowsComponent(parseDiffRows(resultDiff).rows);
 	}
 
 	return undefined;
@@ -259,17 +270,11 @@ function getEditHeaderBg(
 	preview: EditPreview | undefined,
 	settledError: boolean | undefined,
 	theme: Theme,
-): (text: string) => string {
-	if (preview) {
-		if ("error" in preview) {
-			return (text: string) => theme.bg("toolErrorBg", text);
-		}
-		return (text: string) => theme.bg("toolSuccessBg", text);
-	}
-	if (settledError) {
+): ((text: string) => string) | undefined {
+	if (settledError || (preview && "error" in preview)) {
 		return (text: string) => theme.bg("toolErrorBg", text);
 	}
-	return (text: string) => theme.bg("toolPendingBg", text);
+	return undefined;
 }
 
 function buildEditCallComponent(
@@ -286,10 +291,16 @@ function buildEditCallComponent(
 		return component;
 	}
 
-	const body =
-		"error" in component.preview ? theme.fg("error", component.preview.error) : renderDiff(component.preview.diff);
+	if ("error" in component.preview) {
+		component.addChild(new Spacer(1));
+		component.addChild(new Text(theme.fg("error", component.preview.error), 0, 0));
+		return component;
+	}
+
+	const { rows, added, removed } = parseDiffRows(component.preview.diff);
 	component.addChild(new Spacer(1));
-	component.addChild(new Text(body, 0, 0));
+	component.addChild(new Text(formatDiffSummary(added, removed, theme), 0, 0));
+	component.addChild(new DiffRowsComponent(rows));
 	return component;
 }
 
@@ -443,14 +454,14 @@ export function createEditToolDefinition(
 				}
 			}
 
-			const output = formatEditResult(context.args, callComponent?.preview, typedResult, theme, context.isError);
+			const output = formatEditResult(callComponent?.preview, typedResult, theme, context.isError);
 			const component = (context.lastComponent as Container | undefined) ?? new Container();
 			component.clear();
 			if (!output) {
 				return component;
 			}
 			component.addChild(new Spacer(1));
-			component.addChild(new Text(output, 1, 0));
+			component.addChild(output instanceof DiffRowsComponent ? output : new Text(output, 1, 0));
 			return component;
 		},
 	};
