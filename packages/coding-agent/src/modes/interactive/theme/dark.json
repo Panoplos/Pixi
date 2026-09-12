@@ -34,7 +34,8 @@
 		"promptPrefix": "accent",
 
 		"selectedBg": "selectedBg",
-		"scrollbarThumb": "selectedBg",
+		"scrollbarTrack": "darkGray",
+		"scrollbarThumb": "text",
 		"searchMatchBg": "selectedBg",
 		"searchMatchText": "text",
 		"userMessageBg": "userMsgBg",

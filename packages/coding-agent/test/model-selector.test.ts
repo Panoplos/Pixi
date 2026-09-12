@@ -1,6 +1,7 @@
-import type { TUI } from "@earendil-works/pi-tui";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { ModelSelectorComponent, modelLab } from "../src/modes/interactive/components/model-selector.ts";
+import { setKeybindings, type TUI } from "@earendil-works/pi-tui";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { KeybindingsManager } from "../src/core/keybindings.ts";
+import { ModelSelectorComponent } from "../src/modes/interactive/components/model-selector.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 import { createHarness, type Harness } from "./suite/harness.ts";
@@ -9,16 +10,6 @@ function createFakeTui(): TUI {
 	return { requestRender: () => {} } as unknown as TUI;
 }
 
-describe("modelLab", () => {
-	it("uses the <lab>/ prefix of the id, falling back to the provider", () => {
-		expect(modelLab({ id: "deepseek-ai/DeepSeek-V4-Pro-0813", provider: "deepinfra" } as never)).toBe("deepseek-ai");
-		expect(modelLab({ id: "meta-llama/Llama-3.3", provider: "deepinfra" } as never)).toBe("meta-llama");
-		expect(modelLab({ id: "deepseek-chat", provider: "deepseek" } as never)).toBe("deepseek");
-		// OpenRouter `~`-prefixed aliases group with their real lab
-		expect(modelLab({ id: "~anthropic/claude-sonnet-latest", provider: "openrouter" } as never)).toBe("anthropic");
-	});
-});
-
 describe("model selector", () => {
 	let harness: Harness | undefined;
 
@@ -26,9 +17,66 @@ describe("model selector", () => {
 		initTheme("dark");
 	});
 
+	beforeEach(() => {
+		setKeybindings(new KeybindingsManager());
+	});
+
 	afterEach(() => {
 		harness?.cleanup();
 		harness = undefined;
+	});
+
+	it("keeps the current model marked while browsing", async () => {
+		harness = await createHarness({
+			models: [
+				{ id: "current-model", name: "Current Model", reasoning: true },
+				{ id: "browsed-model", name: "Browsed Model", reasoning: true },
+			],
+		});
+		const currentModel = harness.getModel("current-model")!;
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			currentModel,
+			harness.session.modelRuntime,
+			[],
+			() => {},
+			() => {},
+		);
+
+		const getModelRow = (id: string): string | undefined =>
+			stripAnsi(selector.render(120).join("\n"))
+				.split("\n")
+				.find((line) => line.includes(`${id} [`))
+				?.trimEnd();
+
+		expect(getModelRow("current-model")).toBe(`→ ✓ current-model [${currentModel.provider}]`);
+		selector.handleInput("\x1b[B");
+		expect(getModelRow("current-model")).toBe(`  ✓ current-model [${currentModel.provider}]`);
+		expect(getModelRow("browsed-model")).toBe(`→   browsed-model [${currentModel.provider}]`);
+		selector.dispose();
+	});
+
+	it("uses the configured save binding", async () => {
+		setKeybindings(new KeybindingsManager({ "app.models.save": "ctrl+r" }));
+		harness = await createHarness();
+		const currentModel = harness.getModel()!;
+		const saveDefault = vi.fn();
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			currentModel,
+			harness.session.modelRuntime,
+			[],
+			() => {},
+			() => {},
+			undefined,
+			saveDefault,
+		);
+
+		expect(stripAnsi(selector.render(120).join("\n"))).toContain("Ctrl+R to set as default");
+		selector.handleInput("\x13");
+		expect(saveDefault).not.toHaveBeenCalled();
+		selector.handleInput("\x12");
+		expect(saveDefault).toHaveBeenCalledWith(currentModel);
 	});
 
 	it("lists every catalog that failed to refresh", async () => {
@@ -54,28 +102,5 @@ describe("model selector", () => {
 			const rendered = stripAnsi(selector.render(120).join("\n"));
 			expect(rendered).toContain("Could not refresh 2 model catalogs (openai, anthropic); showing cached models.");
 		});
-	});
-
-	it("keeps each lab contiguous while putting the current model first", () => {
-		type SortItem = {
-			provider: string;
-			id: string;
-			model: { provider: string; id: string };
-			lab: string;
-		};
-		const current = { provider: "host", id: "zoo/current" };
-		const items = [
-			{ provider: "host", id: "zoo/other", model: { provider: "host", id: "zoo/other" }, lab: "zoo" },
-			{ provider: "host", id: "alpha/model", model: { provider: "host", id: "alpha/model" }, lab: "alpha" },
-			{ provider: "host", id: "zoo/current", model: current, lab: "zoo" },
-		];
-		const sortModels = (
-			ModelSelectorComponent.prototype as unknown as {
-				sortModels(this: { currentModel: typeof current }, models: SortItem[]): SortItem[];
-			}
-		).sortModels;
-
-		const sorted = sortModels.call({ currentModel: current }, items);
-		expect(sorted.map(({ id }) => id)).toEqual(["zoo/current", "zoo/other", "alpha/model"]);
 	});
 });

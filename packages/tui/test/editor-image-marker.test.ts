@@ -86,26 +86,6 @@ describe("Editor image markers", () => {
 		}
 	});
 
-	it("deleting a selection spanning the marker fires onImagesDeleted once", () => {
-		const editor = new Editor(createTestTUI(), defaultEditorTheme);
-		const deleted: number[][] = [];
-		editor.onImagesDeleted = (ids) => deleted.push(ids);
-		const { path, cleanup } = tempImage();
-		try {
-			editor.setText("ab");
-			editor.insertImageMarker(path); // "ab[Image 1]"
-
-			// Select the whole first line via screen-cell selection, then type over it.
-			assert.ok(editor.handleSelection({ x: 0, y: 1 }, { x: 80, y: 1 }, 80));
-			editor.handleInput("x");
-			assert.strictEqual(editor.getText(), "x");
-			assert.strictEqual(deleted.length, 1);
-			assert.deepStrictEqual(editor.getImageAttachments(), []);
-		} finally {
-			cleanup();
-		}
-	});
-
 	it("assigns fresh marker IDs so re-pasted markers never collide", () => {
 		const editor = new Editor(createTestTUI(), defaultEditorTheme);
 		const { path, cleanup } = tempImage();

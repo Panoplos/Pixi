@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { Container, Markdown, type MarkdownTheme, Spacer, Text } from "@earendil-works/pi-tui";
+import { Container, Markdown, type MarkdownTheme, MouseRegion, Spacer, Text } from "@earendil-works/pi-tui";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
@@ -15,16 +15,19 @@ export class AssistantMessageComponent extends Container {
 	private contentContainer: Container;
 	private hideThinkingBlock: boolean;
 	private markdownTheme: MarkdownTheme;
+	private hiddenThinkingLabel: string;
 	private outputPad: number;
 	private markdownTransformers: readonly MarkdownTransformer[];
 	private lastMessage?: AssistantMessage;
 	private hasToolCalls = false;
 	private isStreaming = false;
+	private thinkingVisibilityOverrides = new Map<number, boolean>();
 
 	constructor(
 		message?: AssistantMessage,
 		hideThinkingBlock = false,
 		markdownTheme: MarkdownTheme = getMarkdownTheme(),
+		hiddenThinkingLabel = "Thinking...",
 		outputPad = 1,
 		markdownTransformers: readonly MarkdownTransformer[] = [],
 	) {
@@ -32,6 +35,7 @@ export class AssistantMessageComponent extends Container {
 
 		this.hideThinkingBlock = hideThinkingBlock;
 		this.markdownTheme = markdownTheme;
+		this.hiddenThinkingLabel = hiddenThinkingLabel;
 		this.outputPad = outputPad;
 		this.markdownTransformers = markdownTransformers;
 
@@ -53,6 +57,14 @@ export class AssistantMessageComponent extends Container {
 
 	setHideThinkingBlock(hide: boolean): void {
 		this.hideThinkingBlock = hide;
+		this.thinkingVisibilityOverrides.clear();
+		if (this.lastMessage) {
+			this.updateContent(this.lastMessage);
+		}
+	}
+
+	setHiddenThinkingLabel(label: string): void {
+		this.hiddenThinkingLabel = label;
 		if (this.lastMessage) {
 			this.updateContent(this.lastMessage);
 		}
@@ -83,12 +95,8 @@ export class AssistantMessageComponent extends Container {
 		// Clear content container
 		this.contentContainer.clear();
 
-		// Hidden thinking renders nothing, so it must not count as visible content;
-		// otherwise a thinking-only (tool-call) message would render a lone blank
-		// spacer line on a restored session.
-		const showingThinking = !this.hideThinkingBlock;
 		const hasVisibleContent = message.content.some(
-			(c) => (c.type === "text" && c.text.trim()) || (showingThinking && c.type === "thinking" && c.thinking.trim()),
+			(c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()),
 		);
 
 		if (hasVisibleContent) {
@@ -96,6 +104,7 @@ export class AssistantMessageComponent extends Container {
 		}
 
 		// Render content in order
+		let thinkingRunIndex = 0;
 		for (let i = 0; i < message.content.length; i++) {
 			const content = message.content[i];
 			if (content.type === "text" && content.text.trim()) {
@@ -130,15 +139,11 @@ export class AssistantMessageComponent extends Container {
 					.slice(i + 1)
 					.some((c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()));
 
-				if (this.hideThinkingBlock) {
-					// Thinking is hidden. Interactive mode uses stream markers to show a
-					// transient status and append its completed duration; restored sessions
-					// render neither.
-					continue;
-				} else {
-					// Render each run of thinking blocks as one Markdown section.
-					this.contentContainer.addChild(
-						new Markdown(
+				const runIndex = thinkingRunIndex++;
+				const hidden = this.thinkingVisibilityOverrides.get(runIndex) ?? this.hideThinkingBlock;
+				const thinkingComponent = hidden
+					? new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0)
+					: new Markdown(
 							thinkingBlocks.join("\n\n"),
 							this.outputPad,
 							0,
@@ -154,9 +159,15 @@ export class AssistantMessageComponent extends Container {
 									this.markdownTransformers,
 								),
 							},
-						),
-					);
-				}
+						);
+				this.contentContainer.addChild(
+					new MouseRegion(thinkingComponent, (event) => {
+						if (event.type !== "click" || event.button !== "left") return undefined;
+						this.thinkingVisibilityOverrides.set(runIndex, !hidden);
+						if (this.lastMessage) this.updateContent(this.lastMessage);
+						return { handled: true };
+					}),
+				);
 				if (hasVisibleContentAfter) {
 					this.contentContainer.addChild(new Spacer(1));
 				}

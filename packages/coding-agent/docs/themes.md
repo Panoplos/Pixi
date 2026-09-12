@@ -88,7 +88,8 @@ vim ~/.pi/agent/themes/my-theme.json
     "text": "",
     "thinkingText": "secondary",
     "selectedBg": "#2d2d30",
-    "scrollbarThumb": "#555566",
+    "scrollbarTrack": "secondary",
+    "scrollbarThumb": "",
     "searchMatchBg": "#2d2d30",
     "searchMatchText": "",
     "userMessageBg": "#2d2d30",
@@ -99,7 +100,6 @@ vim ~/.pi/agent/themes/my-theme.json
     "toolPendingBg": "#1e1e2e",
     "toolSuccessBg": "#1e2e1e",
     "toolErrorBg": "#2e1e1e",
-    "toolBodyBg": "",
     "toolTitle": "primary",
     "toolOutput": "",
     "mdHeading": "#ffaa00",
@@ -161,15 +161,15 @@ vim ~/.pi/agent/themes/my-theme.json
 
 - `name` is required, must be unique, and must not contain `/`.
 - `vars` is optional. Define reusable colors here, then reference them in `colors`.
-- `colors` must define every required token. Tokens marked optional use the fallbacks listed below.
+- `colors` must define all 53 required tokens. `thinkingMax` and the two search highlight tokens are optional and use the fallbacks listed below.
 
 The `$schema` field enables editor auto-completion and validation.
 
 ## Color Tokens
 
-Optional tokens preserve compatibility with existing themes. Their fallback is documented beside each token. Other search matches use `searchMatchText` on `searchMatchBg` with an underline; the current match reverses that foreground/background pair and uses bold text.
+Every theme must define all 53 required color tokens. The optional tokens preserve compatibility with existing themes: `thinkingMax` falls back to `thinkingXhigh`, `searchMatchBg` falls back to `selectedBg`, and `searchMatchText` falls back to `text`. Other search matches use `searchMatchText` on `searchMatchBg` with an underline; the current match reverses that foreground/background pair and uses bold text.
 
-### Core UI (11 required, 1 optional)
+### Core UI (13 colors)
 
 | Token | Purpose |
 |-------|---------|
@@ -184,14 +184,14 @@ Optional tokens preserve compatibility with existing themes. Their fallback is d
 | `dim` | Tertiary text |
 | `text` | Default text (usually `""`) |
 | `thinkingText` | Thinking block text |
-| `promptPrefix` (optional) | Input box prompt marker (the leading `❯ `); falls back to `accent` |
+| `scrollbarTrack` | Fullscreen scrollbar track foreground |
+| `scrollbarThumb` | Fullscreen scrollbar thumb foreground, shared by normal and expanded states |
 
-### Backgrounds & Content (11 required, 4 optional)
+### Backgrounds & Content (11 required, 2 optional)
 
 | Token | Purpose |
 |-------|---------|
 | `selectedBg` | Selected line background |
-| `scrollbarThumb` | Fullscreen scrollbar thumb background; optional, falls back to `selectedBg` |
 | `searchMatchBg` | Transcript search match background and current-match text; optional, falls back to `selectedBg` |
 | `searchMatchText` | Transcript search match text and current-match background; optional, falls back to `text` |
 | `userMessageBg` | User message background |
@@ -202,7 +202,6 @@ Optional tokens preserve compatibility with existing themes. Their fallback is d
 | `toolPendingBg` | Tool box (pending) |
 | `toolSuccessBg` | Tool box (success) |
 | `toolErrorBg` | Tool box (error) |
-| `toolBodyBg` (optional) | read/bash success background (grey) |
 | `toolTitle` | Tool title |
 | `toolOutput` | Tool output text |
 
@@ -221,16 +220,13 @@ Optional tokens preserve compatibility with existing themes. Their fallback is d
 | `mdHr` | Horizontal rule |
 | `mdListBullet` | List bullets |
 
-### Tool Diffs (3 required, 3 optional)
+### Tool Diffs (3 colors)
 
 | Token | Purpose |
 |-------|---------|
 | `toolDiffAdded` | Added lines |
 | `toolDiffRemoved` | Removed lines |
 | `toolDiffContext` | Context lines |
-| `toolDiffText` (optional) | White text on colored diff rows |
-| `toolDiffAddedBg` (optional) | Added-row background (dark green) |
-| `toolDiffRemovedBg` (optional) | Removed-row background (dark red) |
 
 ### Syntax Highlighting (9 colors)
 
@@ -265,20 +261,6 @@ Editor border colors indicating thinking level (visual hierarchy from subtle to 
 | Token | Purpose |
 |-------|---------|
 | `bashMode` | Editor border in bash mode (`!` prefix) |
-
-### Footer Status Line (7 colors, optional)
-
-Colors in the single-line status footer below the input box. All optional; default to built-in values if a theme omits them.
-
-| Token | Purpose | Default |
-|-------|---------|---------|
-| `footerPath` | Working directory path | burnt orange (`#CC5500`) |
-| `footerBranch` | Git branch | green (`#3FBF5F`) |
-| `footerCache` | Cache hit rate (`CHR:%`) | near white (`#E0E0E0`) |
-| `footerContextSafe` | Context usage under 80% | cyan (`#00D7FF`) |
-| `footerContextWarn` | Context usage at/above 80% | yellow (`#FFD54F`) |
-| `footerAutoCompact` | Auto-compaction indicator (`(auto)`) | dark yellow (`#D4A017`) |
-| `footerModel` | Model name / effort level | light grey (`#9E9E9E`) |
 
 ### HTML Export (optional)
 

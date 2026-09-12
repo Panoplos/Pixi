@@ -1,7 +1,7 @@
 import { type AssistantMessage, fauxAssistantMessage, fauxThinking } from "@earendil-works/pi-ai";
-import { setKeybindings } from "@earendil-works/pi-tui";
+import { resetCapabilitiesCache, setCapabilities, setKeybindings } from "@earendil-works/pi-tui";
 import chalk from "chalk";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { type ActivityToolCall, extractCommitHash, summarizeSection } from "../src/core/tool-activity-summary.ts";
 import { ToolActivitySummaryComponent } from "../src/modes/interactive/components/tool-activity-summary.ts";
@@ -13,7 +13,12 @@ function call(id: string, toolName: string, args: Record<string, unknown> = {}):
 	return { toolName, toolCallId: id, args };
 }
 
-beforeAll(() => setKeybindings(new KeybindingsManager()));
+beforeAll(() => {
+	setCapabilities({ images: null, trueColor: true, hyperlinks: false });
+	setKeybindings(new KeybindingsManager());
+});
+
+afterAll(() => resetCapabilitiesCache());
 
 describe("InteractiveMode restored activity boundaries", () => {
 	function render(message: AssistantMessage) {
@@ -23,6 +28,7 @@ describe("InteractiveMode restored activity boundaries", () => {
 			sectionByToolCall: new Map<string, ToolActivitySummaryComponent>(),
 			standaloneToolCall: new Map<string, ToolExecutionComponent>(),
 			finalizeActiveToolSection,
+			maybeShowAssistantDiagnostics: () => {},
 			settingsManager: { getShowCacheMissNotices: () => false },
 			sessionManager: { getEntries: () => [] },
 			addMessageToChat: () => {},

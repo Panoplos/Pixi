@@ -53,6 +53,7 @@ type RenderSessionContextThis = {
 	isInitialized: boolean;
 	updateEditorBorderColor(): void;
 	getRegisteredToolDefinition(toolName: string): undefined;
+	maybeShowAssistantDiagnostics(message: AssistantMessage): void;
 	addMessageToChat(message: AgentMessage, options?: { populateHistory?: boolean }): void;
 	finalizeActiveToolSection(): void;
 	getOrCreateActiveToolSection(): ToolActivitySummaryComponent;
@@ -112,6 +113,7 @@ function createFakeInteractiveModeThis(): RenderSessionContextThis {
 				createToolExecution(name: string, id: string, args: unknown): ToolExecutionComponent;
 			}
 		).createToolExecution,
+		maybeShowAssistantDiagnostics: vi.fn(),
 		renderSessionItems: (InteractiveMode.prototype as unknown as { renderSessionItems: RenderSessionItems })
 			.renderSessionItems,
 		addMessageToChat(message: AgentMessage) {

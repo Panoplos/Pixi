@@ -38,6 +38,8 @@ type Ctx = {
 	createStandaloneToolExecution(n: string, id: string, a: unknown): ToolExecutionComponent;
 	finalizeThinkingIndicator(): void;
 	showStatusIndicator(indicator: StatusIndicator): void;
+	activeWorkingIndicatorEmbedded: boolean;
+	setEditorWorkingStatusIndicator(indicator: StatusIndicator | undefined): boolean;
 };
 
 function makeCtx(): Ctx {
@@ -68,6 +70,8 @@ function makeCtx(): Ctx {
 		createStandaloneToolExecution: () => new Text("x", 0, 0) as unknown as ToolExecutionComponent,
 		finalizeThinkingIndicator: (InteractiveMode.prototype as unknown as { finalizeThinkingIndicator(): void })
 			.finalizeThinkingIndicator,
+		activeWorkingIndicatorEmbedded: false,
+		setEditorWorkingStatusIndicator: () => false,
 		showStatusIndicator: (
 			InteractiveMode.prototype as unknown as { showStatusIndicator(indicator: StatusIndicator): void }
 		).showStatusIndicator,

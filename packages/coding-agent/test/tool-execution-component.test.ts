@@ -1,11 +1,12 @@
 import { join, resolve } from "node:path";
-import { Text, type TUI } from "@earendil-works/pi-tui";
+import { Text, type TUI, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { beforeAll, describe, expect, test } from "vitest";
 import { getReadmePath } from "../src/config.ts";
 import type { ToolDefinition } from "../src/core/extensions/types.ts";
 import { type BashOperations, createBashToolDefinition } from "../src/core/tools/bash.ts";
 import { createReadTool, createReadToolDefinition } from "../src/core/tools/read.ts";
+import { withBuiltInRenderers } from "../src/core/tools/renderers/index.ts";
 import { createWriteToolDefinition } from "../src/core/tools/write.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
@@ -108,13 +109,13 @@ describe("ToolExecutionComponent parity", () => {
 			"tool-2",
 			{ path: "README.md", oldText: "before", newText: "after" },
 			{},
-			overrideDefinition,
+			withBuiltInRenderers("edit", overrideDefinition),
 			createFakeTui(),
 			process.cwd(),
 		);
 		component.updateResult({ content: [], details: { diff: "+1 after", firstChangedLine: 1 }, isError: false });
 		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("Edit");
+		expect(rendered).toContain("edit");
 		expect(rendered).toContain("README.md");
 		expect(rendered).not.toContain(":1");
 	});
@@ -217,7 +218,7 @@ describe("ToolExecutionComponent parity", () => {
 			"tool-4b",
 			{ path: "notes.txt" },
 			{},
-			overrideDefinition,
+			withBuiltInRenderers("read", overrideDefinition),
 			createFakeTui(),
 			process.cwd(),
 		);
@@ -239,7 +240,7 @@ describe("ToolExecutionComponent parity", () => {
 			"tool-4c",
 			{ path: "README.md" },
 			{},
-			overrideDefinition,
+			withBuiltInRenderers("read", overrideDefinition),
 			createFakeTui(),
 			process.cwd(),
 		);
@@ -429,6 +430,42 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered).toContain(theme.fg("toolOutput", error));
 	});
 
+	test("expands a collapsed tool result when clicked", () => {
+		const component = new ToolExecutionComponent(
+			"read",
+			"tool-click-expand",
+			{ path: "notes.txt" },
+			{},
+			createReadToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.updateResult(
+			{ content: [{ type: "text", text: "hidden content" }], details: undefined, isError: false },
+			false,
+		);
+		const width = 120;
+		const lines = component.render(width);
+		const resultRow = lines.findIndex((line) => stripAnsi(line).includes("notes.txt"));
+		expect(resultRow).toBeGreaterThanOrEqual(0);
+		const event: TuiMouseEvent = {
+			type: "click",
+			button: "left",
+			x: 2,
+			y: resultRow,
+			screenX: 2,
+			screenY: resultRow,
+			width,
+			height: lines.length,
+			shift: false,
+			alt: false,
+			ctrl: false,
+			clickCount: 1,
+		};
+		expect(component.handleMouse(event)?.handled).toBe(true);
+		expect(stripAnsi(component.render(width).join("\n"))).toContain("hidden content");
+	});
+
 	test("collapses ordinary read results until expanded", () => {
 		const component = new ToolExecutionComponent(
 			"read",
@@ -445,7 +482,7 @@ describe("ToolExecutionComponent parity", () => {
 		);
 
 		const collapsed = stripAnsi(component.render(120).join("\n"));
-		expect(collapsed).toContain("Read");
+		expect(collapsed).toContain("read");
 		expect(collapsed).toContain("notes.txt");
 		expect(collapsed).not.toContain("hidden content");
 
@@ -544,98 +581,4 @@ describe("ToolExecutionComponent parity", () => {
 			expect(collapsed.indexOf(":120-329")).toBeLessThan(collapsed.indexOf("to expand"));
 		});
 	}
-});
-
-describe("per-tool block backgrounds", () => {
-	beforeAll(() => {
-		initTheme("dark");
-	});
-
-	function renderSuccess(toolName: string, definition?: ToolDefinition): string {
-		const component = new ToolExecutionComponent(
-			toolName,
-			`bg-tool-${toolName}`,
-			{},
-			{},
-			definition,
-			createFakeTui(),
-			process.cwd(),
-		);
-		component.updateResult(
-			{
-				content: [{ type: "text", text: "done" }],
-				details: {},
-				isError: false,
-			},
-			false,
-		);
-		return component.render(120).join("\n");
-	}
-
-	test("bash success uses the toolBodyBg grey", () => {
-		const raw = renderSuccess("bash");
-		expect(raw).toContain(theme.getBgAnsi("toolBodyBg"));
-		expect(raw).not.toContain(theme.getBgAnsi("toolSuccessBg"));
-	});
-
-	test("read success uses the toolBodyBg grey", () => {
-		const raw = renderSuccess("read");
-		expect(raw).toContain(theme.getBgAnsi("toolBodyBg"));
-		expect(raw).not.toContain(theme.getBgAnsi("toolSuccessBg"));
-	});
-
-	test("write success is transparent (no tool background)", () => {
-		const raw = renderSuccess("write");
-		expect(raw).not.toContain(theme.getBgAnsi("toolBodyBg"));
-		expect(raw).not.toContain(theme.getBgAnsi("toolSuccessBg"));
-	});
-
-	test("write error keeps the error background", () => {
-		const component = new ToolExecutionComponent(
-			"write",
-			"bg-tool-write-error",
-			{},
-			{},
-			undefined,
-			createFakeTui(),
-			process.cwd(),
-		);
-		component.updateResult(
-			{
-				content: [{ type: "text", text: "boom" }],
-				details: {},
-				isError: true,
-			},
-			false,
-		);
-		const raw = component.render(120).join("\n");
-		expect(raw).toContain(theme.getBgAnsi("toolErrorBg"));
-	});
-
-	test("default tools keep the success background", () => {
-		const component = new ToolExecutionComponent(
-			"custom_tool",
-			"bg-tool-default",
-			{},
-			{},
-			createBaseToolDefinition(),
-			createFakeTui(),
-			process.cwd(),
-		);
-		component.updateResult(
-			{
-				content: [{ type: "text", text: "done" }],
-				details: {},
-				isError: false,
-			},
-			false,
-		);
-		const raw = component.render(120).join("\n");
-		expect(raw).toContain(theme.getBgAnsi("toolSuccessBg"));
-		expect(raw).not.toContain(theme.getBgAnsi("toolBodyBg"));
-	});
-
-	test("toolBodyBg resolves to a background color", () => {
-		expect(theme.getBgAnsi("toolBodyBg")).toBeTruthy();
-	});
 });

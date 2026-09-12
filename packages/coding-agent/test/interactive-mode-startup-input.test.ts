@@ -15,12 +15,15 @@ type SubmitContext = {
 	};
 	flushPendingBashComponents: () => void;
 	onInputCallback?: (text: string) => void;
-	pendingUserInputs: string[];
+	pendingUserInputs: Array<{ text: string; images: unknown[] }>;
+	takeEditorImages: () => Promise<unknown[] | undefined>;
+	submitUserInput: (text: string, images: unknown[]) => void;
+	restoreSubmittedEditorText: (text: string) => void;
 };
 
 type InputContext = {
 	onInputCallback?: (text: string) => void;
-	pendingUserInputs: string[];
+	pendingUserInputs: Array<{ text: string; images: unknown[] }>;
 };
 
 type StartupSubmitContext = {
@@ -31,7 +34,7 @@ type StartupSubmitContext = {
 type InteractiveModePrivate = {
 	handleStartupSubmit(this: StartupSubmitContext, text: string): void;
 	setupEditorSubmitHandler(this: SubmitContext): void;
-	getUserInput(this: InputContext): Promise<string>;
+	getUserInput(this: InputContext): Promise<{ text: string; images: unknown[] }>;
 };
 
 const interactiveModePrototype = InteractiveMode.prototype as unknown as InteractiveModePrivate;
@@ -51,6 +54,13 @@ function createSubmitContext(): SubmitContext {
 		},
 		flushPendingBashComponents: vi.fn(),
 		pendingUserInputs: [],
+		takeEditorImages: vi.fn(async () => []),
+		submitUserInput: (
+			InteractiveMode.prototype as unknown as {
+				submitUserInput(this: SubmitContext, text: string, images: unknown[]): void;
+			}
+		).submitUserInput,
+		restoreSubmittedEditorText: vi.fn(),
 	};
 }
 
@@ -73,17 +83,20 @@ describe("InteractiveMode startup input", () => {
 
 		await context.defaultEditor.onSubmit?.(" early prompt ");
 
-		expect(context.pendingUserInputs).toEqual(["early prompt"]);
+		expect(context.pendingUserInputs).toEqual([{ text: "early prompt", images: [] }]);
 		expect(context.flushPendingBashComponents).toHaveBeenCalledTimes(1);
 		expect(context.editor.addToHistory).toHaveBeenCalledWith("early prompt");
 	});
 
 	it("returns queued startup input before installing a new input callback", async () => {
 		const context: InputContext = {
-			pendingUserInputs: ["queued prompt"],
+			pendingUserInputs: [{ text: "queued prompt", images: [] }],
 		};
 
-		await expect(interactiveModePrototype.getUserInput.call(context)).resolves.toBe("queued prompt");
+		await expect(interactiveModePrototype.getUserInput.call(context)).resolves.toEqual({
+			text: "queued prompt",
+			images: [],
+		});
 		expect(context.onInputCallback).toBeUndefined();
 		expect(context.pendingUserInputs).toEqual([]);
 	});

@@ -79,8 +79,8 @@ describe("DeepInfra catalog", () => {
 				JSON.stringify({
 					data: [
 						{
-							id: "zai-org/GLM-5.3-Flash",
-							name: "GLM-5.3-Flash",
+							id: "zai-org/GLM-9.9-test",
+							name: "GLM-9.9-test",
 							metadata: {
 								context_length: 1_048_576,
 								max_tokens: 131_072,
@@ -102,15 +102,15 @@ describe("DeepInfra catalog", () => {
 		models.setProvider(provider);
 
 		expect(models.getModel("deepinfra", "zai-org/GLM-5.2")).toBeDefined();
-		expect(models.getModel("deepinfra", "zai-org/GLM-5.3-Flash")).toBeUndefined();
+		expect(models.getModel("deepinfra", "zai-org/GLM-9.9-test")).toBeUndefined();
 
 		expect((await models.refresh({ providers: ["deepinfra"] })).errors.size).toBe(0);
-		expect(models.getModel("deepinfra", "zai-org/GLM-5.3-Flash")).toMatchObject({
-			name: "GLM-5.3-Flash",
+		expect(models.getModel("deepinfra", "zai-org/GLM-9.9-test")).toMatchObject({
+			name: "GLM-9.9-test",
 			reasoning: true,
 			input: ["text", "image"],
 		});
 		expect(models.getModel("deepinfra", "zai-org/GLM-5.2")).toBeDefined();
-		expect((await modelsStore.read("deepinfra"))?.models.map((model) => model.id)).toEqual(["zai-org/GLM-5.3-Flash"]);
+		expect((await modelsStore.read("deepinfra"))?.models.map((model) => model.id)).toEqual(["zai-org/GLM-9.9-test"]);
 	});
 });
