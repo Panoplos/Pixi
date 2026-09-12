@@ -34,6 +34,10 @@ function isPasteMarker(segment: string): boolean {
 	return segment.length >= 10 && PASTE_MARKER_SINGLE.test(segment);
 }
 
+function isAtomicMarker(segment: string): boolean {
+	return isPasteMarker(segment) || IMAGE_MARKER_SINGLE.test(segment);
+}
+
 /** A family of atomic markers: regex + validity check for a specific ID. */
 interface MarkerRule {
 	regex: RegExp;
@@ -1104,12 +1108,7 @@ export class Editor implements Component, Focusable {
 					.filter((id) => this.pastes.has(id)),
 			),
 		);
-		this.removeImages(
-			[...selectedText.matchAll(IMAGE_MARKER_REGEX)]
-				.map((match) => Number(match[1]))
-				.filter((id) => this.images.has(id)),
-			true,
-		);
+		this.removeImagesFromText(selectedText);
 	}
 
 	private removePastes(removedIds: Set<number>): void {
@@ -1281,16 +1280,27 @@ export class Editor implements Component, Focusable {
 	 * removing it fires `onImagesDeleted` so the caller can clean up the file.
 	 */
 	insertImageMarker(filePath: string): number {
+		this.cancelAutocomplete();
+		this.pushUndoSnapshot();
+		this.lastAction = null;
+		this.exitHistoryBrowsing();
 		this.imageCounter++;
 		const id = this.imageCounter;
 		this.images.set(id, filePath);
-		this.insertTextAtCursor(`[Image ${id}]`);
+		this.insertTextAtCursorInternal(`[Image ${id}]`);
 		return id;
 	}
 
-	/** Currently pending image attachments, ordered by marker ID. */
+	/** Currently pending image attachments, ordered by marker position. */
 	getImageAttachments(): Array<{ id: number; path: string }> {
-		return [...this.images].map(([id, path]) => ({ id, path }));
+		const seen = new Set<number>();
+		return [...this.getText().matchAll(IMAGE_MARKER_REGEX)].flatMap((match) => {
+			const id = Number(match[1]);
+			const path = this.images.get(id);
+			if (!path || seen.has(id)) return [];
+			seen.add(id);
+			return [{ id, path }];
+		});
 	}
 
 	/** Drop all pending image attachments without firing deletion callbacks. */
@@ -1300,9 +1310,17 @@ export class Editor implements Component, Focusable {
 	}
 
 	private removeImages(removedIds: number[], fireCallback = true): void {
-		if (removedIds.length === 0) return;
-		for (const id of removedIds) this.images.delete(id);
-		if (fireCallback) this.onImagesDeleted?.(removedIds);
+		const deletedIds = removedIds.filter((id) => this.images.delete(id));
+		if (fireCallback && deletedIds.length > 0) this.onImagesDeleted?.(deletedIds);
+	}
+
+	private removeImagesFromText(text: string): void {
+		const remainingText = this.getText();
+		this.removeImages(
+			[...text.matchAll(IMAGE_MARKER_REGEX)]
+				.map((match) => Number(match[1]))
+				.filter((id) => this.images.has(id) && !remainingText.includes(`[Image ${id}]`)),
+		);
 	}
 
 	/**
@@ -1780,6 +1798,7 @@ export class Editor implements Component, Focusable {
 			// Delete from start of line up to cursor
 			this.state.lines[this.state.cursorLine] = currentLine.slice(this.state.cursorCol);
 			this.setCursorCol(0);
+			this.removeImagesFromText(deletedText);
 		} else if (this.state.cursorLine > 0) {
 			this.pushUndoSnapshot();
 
@@ -1814,6 +1833,7 @@ export class Editor implements Component, Focusable {
 
 			// Delete from cursor to end of line
 			this.state.lines[this.state.cursorLine] = currentLine.slice(0, this.state.cursorCol);
+			this.removeImagesFromText(deletedText);
 		} else if (this.state.cursorLine < this.state.lines.length - 1) {
 			this.pushUndoSnapshot();
 
@@ -1869,6 +1889,7 @@ export class Editor implements Component, Focusable {
 			this.state.lines[this.state.cursorLine] =
 				currentLine.slice(0, deleteFrom) + currentLine.slice(this.state.cursorCol);
 			this.setCursorCol(deleteFrom);
+			this.removeImagesFromText(deletedText);
 		}
 
 		if (this.onChange) {
@@ -1911,6 +1932,7 @@ export class Editor implements Component, Focusable {
 
 			this.state.lines[this.state.cursorLine] =
 				currentLine.slice(0, this.state.cursorCol) + currentLine.slice(deleteTo);
+			this.removeImagesFromText(deletedText);
 		}
 
 		if (this.onChange) {
@@ -2131,7 +2153,7 @@ export class Editor implements Component, Focusable {
 		this.setCursorCol(
 			findWordBackward(currentLine, this.state.cursorCol, {
 				segment: (text) => this.segment(text, "word"),
-				isAtomicSegment: isPasteMarker,
+				isAtomicSegment: isAtomicMarker,
 			}),
 		);
 	}
@@ -2271,6 +2293,7 @@ export class Editor implements Component, Focusable {
 		this.exitHistoryBrowsing();
 		const snapshot = this.undoStack.pop();
 		if (!snapshot) return;
+		const previousImageIds = [...this.images.keys()];
 		Object.assign(this.state, snapshot.state);
 		this.pastes = snapshot.pastes;
 		this.pasteCounter = snapshot.pasteCounter;
@@ -2278,6 +2301,8 @@ export class Editor implements Component, Focusable {
 		// attachment extraction on the consumer side skips files that no longer exist.
 		this.images = new Map(snapshot.images);
 		this.imageCounter = Math.max(snapshot.imageCounter, ...this.images.keys(), 0);
+		const removedImageIds = previousImageIds.filter((id) => !this.images.has(id));
+		if (removedImageIds.length > 0) this.onImagesDeleted?.(removedImageIds);
 		this.lastAction = null;
 		this.preferredVisualCol = null;
 		if (this.onChange) {
@@ -2335,7 +2360,7 @@ export class Editor implements Component, Focusable {
 		this.setCursorCol(
 			findWordForward(currentLine, this.state.cursorCol, {
 				segment: (text) => this.segment(text, "word"),
-				isAtomicSegment: isPasteMarker,
+				isAtomicSegment: isAtomicMarker,
 			}),
 		);
 	}

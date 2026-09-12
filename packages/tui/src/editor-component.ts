@@ -56,7 +56,7 @@ export interface EditorComponent extends Component {
 	 */
 	insertImageMarker?(filePath: string): number;
 
-	/** Currently pending image attachments, ordered by marker ID. */
+	/** Currently pending image attachments, ordered by marker position. */
 	getImageAttachments?(): Array<{ id: number; path: string }>;
 
 	/** Drop all pending image attachments without firing deletion callbacks. */
