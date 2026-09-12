@@ -289,6 +289,9 @@ function withThemeColorFallbacks(colors: ThemeJson["colors"]): ThemeJson["colors
 	thinkingMax: ColorValue;
 	searchMatchBg: ColorValue;
 	searchMatchText: ColorValue;
+	toolDiffText: ColorValue;
+	toolDiffAddedBg: ColorValue;
+	toolDiffRemovedBg: ColorValue;
 } {
 	return {
 		...colors,
@@ -297,6 +300,9 @@ function withThemeColorFallbacks(colors: ThemeJson["colors"]): ThemeJson["colors
 		thinkingMax: colors.thinkingMax ?? colors.thinkingXhigh,
 		searchMatchBg: colors.searchMatchBg ?? colors.selectedBg,
 		searchMatchText: colors.searchMatchText ?? colors.text,
+		toolDiffText: colors.toolDiffText ?? colors.text,
+		toolDiffAddedBg: colors.toolDiffAddedBg ?? colors.toolSuccessBg,
+		toolDiffRemovedBg: colors.toolDiffRemovedBg ?? colors.toolErrorBg,
 	};
 }
 
@@ -331,6 +337,7 @@ export class Theme {
 			scrollbarThumb: fgColors.scrollbarThumb ?? fgColors.text,
 			thinkingMax: fgColors.thinkingMax ?? fgColors.thinkingXhigh,
 			searchMatchText: fgColors.searchMatchText ?? fgColors.text,
+			toolDiffText: fgColors.toolDiffText ?? fgColors.text,
 		};
 		for (const [key, value] of Object.entries(colors) as [ThemeColor, string | number][]) {
 			this.fgColors.set(key, fgAnsi(value, mode));
@@ -339,6 +346,8 @@ export class Theme {
 		const backgrounds = {
 			...bgColors,
 			searchMatchBg: bgColors.searchMatchBg ?? bgColors.selectedBg,
+			toolDiffAddedBg: bgColors.toolDiffAddedBg ?? bgColors.toolSuccessBg,
+			toolDiffRemovedBg: bgColors.toolDiffRemovedBg ?? bgColors.toolErrorBg,
 		};
 		for (const [key, value] of Object.entries(backgrounds) as [ThemeBg, string | number][]) {
 			this.bgColors.set(key, bgAnsi(value, mode));

@@ -49,9 +49,6 @@ const ThemeJsonSchema = Type.Object({
 		toolSuccessBg: ColorValueSchema,
 		toolErrorBg: ColorValueSchema,
 		toolBodyBg: Type.Optional(ColorValueSchema),
-		toolDiffText: Type.Optional(ColorValueSchema),
-		toolDiffAddedBg: Type.Optional(ColorValueSchema),
-		toolDiffRemovedBg: Type.Optional(ColorValueSchema),
 		toolTitle: ColorValueSchema,
 		toolOutput: ColorValueSchema,
 		// Markdown (10 colors)
@@ -65,10 +62,13 @@ const ThemeJsonSchema = Type.Object({
 		mdQuoteBorder: ColorValueSchema,
 		mdHr: ColorValueSchema,
 		mdListBullet: ColorValueSchema,
-		// Tool Diffs (3 colors)
+		// Tool Diffs (3 required, 3 optional)
 		toolDiffAdded: ColorValueSchema,
 		toolDiffRemoved: ColorValueSchema,
 		toolDiffContext: ColorValueSchema,
+		toolDiffText: Type.Optional(ColorValueSchema),
+		toolDiffAddedBg: Type.Optional(ColorValueSchema),
+		toolDiffRemovedBg: Type.Optional(ColorValueSchema),
 		// Syntax Highlighting (9 colors)
 		syntaxComment: ColorValueSchema,
 		syntaxKeyword: ColorValueSchema,

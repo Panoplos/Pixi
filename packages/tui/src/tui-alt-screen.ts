@@ -7,7 +7,7 @@ import {
 import { AltScreenFlashContainer } from "./components/alt-screen-flash.ts";
 import { ScrollView } from "./components/scroll-view.ts";
 import { getKeybindings } from "./keybindings.ts";
-import { isKeyRelease } from "./keys.ts";
+import { decodePrintableKey, isKeyRelease, matchesKey } from "./keys.ts";
 import {
 	getLayoutBoxesAt,
 	getScrollbarGeometry,
@@ -223,6 +223,12 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private activeSearch?: ActiveSearch;
 	private pressedUrl?: string;
 	private selectionDragged = false;
+	/**
+	 * Component that took ownership of the current drag selection, e.g. the editor.
+	 * It receives the selected range as editor-relative coordinates so typing or
+	 * backspace replaces the selection instead of the screen-level copy path.
+	 */
+	private componentSelectionOwner?: Component;
 	private mouseCapture?: TuiMouseDispatchTarget;
 	private mousePressTarget?: TuiMouseDispatchTarget;
 	private mousePressPoint?: { x: number; y: number };
@@ -702,6 +708,24 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 		const keybindings = getKeybindings();
 		const isRelease = isKeyRelease(data);
+		// A component that owns the drag selection keeps it only across keys that
+		// edit it (typing replaces, backspace/delete removes). Any other key drops
+		// ownership and the screen selection along with it.
+		if (!isRelease && this.componentSelectionOwner && this.getSelectionBounds()) {
+			const owner = this.componentSelectionOwner;
+			this.componentSelectionOwner = undefined;
+			this.clearTextSelection();
+			const editsSelection =
+				keybindings.matches(data, "tui.editor.deleteCharBackward") ||
+				keybindings.matches(data, "tui.editor.deleteCharForward") ||
+				matchesKey(data, "shift+backspace") ||
+				matchesKey(data, "shift+delete") ||
+				matchesKey(data, "shift+space") ||
+				decodePrintableKey(data) !== undefined ||
+				data.charCodeAt(0) >= 32;
+			if (!editsSelection) owner.clearSelection?.();
+			this.requestRender();
+		}
 		if (keybindings.matches(data, "tui.altScreen.search")) {
 			if (!isRelease) this.toggleSearch();
 			return { consume: true };
@@ -872,7 +896,6 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.pressedUrl = undefined;
 		this.selectionDragged = false;
 	}
-
 	private handleMouseEvent(raw: SgrMouseEvent): void {
 		const isMotion = (raw.button & 32) !== 0;
 		const type: TuiMouseEvent["type"] = raw.release
@@ -1341,6 +1364,11 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 				}
 			}
 			if (this.copyOnSelect) void this.copySelectionToClipboard();
+			// A completed drag selection may belong to a single focused component
+			// (the editor). Hand it the range so typing replaces it instead of only
+			// copying the screen selection.
+			const bounds = this.getSelectionBounds();
+			if (bounds) this.componentSelectionOwner = this.handleComponentSelection(bounds);
 			this.requestRender();
 			return;
 		}
@@ -1355,6 +1383,8 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			return;
 		}
 		this.stopSelectionAutoScroll();
+		this.componentSelectionOwner?.clearSelection?.();
+		this.componentSelectionOwner = undefined;
 		this.selectionPressActive = true;
 		const scrollView =
 			!this.hasOverlay() && this.currentLayout
@@ -1393,6 +1423,72 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		return anchorBeforeFocus
 			? { start: this.selectionAnchor, end: this.selectionFocus }
 			: { start: this.selectionFocus, end: this.selectionAnchor };
+	}
+
+	/**
+	 * Offer a screen selection to the focused component when the selection lies
+	 * inside it. Returns that component when it accepted the range.
+	 */
+	private handleComponentSelection(selection: { start: SelectionPoint; end: SelectionPoint }): Component | undefined {
+		if (selection.start.scrollView || selection.end.scrollView) return undefined;
+		const component = this.getFocusedComponent();
+		if (!component?.handleSelection || !this.currentLayout || this.hasOverlay()) return undefined;
+
+		const width = Math.max(1, this.terminal.columns);
+		const geometry = this.findComponentGeometry(this.currentLayout.root.component, component, width);
+		if (!geometry) return undefined;
+		const { offsetX, offsetY, width: componentWidth } = geometry;
+		const insidePoint = (col: number, row: number, boundary: boolean | undefined): boolean =>
+			col >= offsetX &&
+			(boundary ? col <= offsetX + componentWidth : col < offsetX + componentWidth) &&
+			row >= offsetY &&
+			row < offsetY + geometry.height;
+		if (!insidePoint(selection.start.col, selection.start.row, selection.start.boundary)) return undefined;
+		if (!insidePoint(selection.end.col, selection.end.row, selection.end.boundary)) return undefined;
+
+		const accepted = component.handleSelection(
+			{
+				x: selection.start.col - offsetX,
+				y: selection.start.row - offsetY,
+				...(selection.start.boundary ? { boundary: true } : {}),
+			},
+			{
+				x: selection.end.col - offsetX,
+				y: selection.end.row - offsetY,
+				...(selection.end.boundary ? { boundary: true } : {}),
+			},
+			componentWidth,
+		);
+		return accepted ? component : undefined;
+	}
+
+	/**
+	 * Locate a descendant component in the layout and return its top-left offset
+	 * and size, mirroring how `Container` stacks and offsets its children.
+	 */
+	private findComponentGeometry(
+		root: Component,
+		target: Component,
+		width: number,
+	): { offsetX: number; offsetY: number; width: number; height: number } | undefined {
+		const walk = (
+			component: Component,
+			offsetX: number,
+			offsetY: number,
+			width: number,
+		): { offsetX: number; offsetY: number; width: number; height: number } | undefined => {
+			const height = component.render(width).length;
+			if (component === target) return { offsetX, offsetY, width, height };
+			if (!(component instanceof Container)) return undefined;
+			let childY = offsetY;
+			for (const child of component.children) {
+				const found = walk(child, offsetX, childY, width);
+				if (found) return found;
+				childY += child.render(width).length;
+			}
+			return undefined;
+		};
+		return walk(root, 0, 0, width);
 	}
 
 	private getSelectionColumns(

@@ -108,6 +108,13 @@ export function retargetMouseEvent(event: TuiMouseEvent, target: TuiMouseDispatc
 	};
 }
 
+export interface ComponentSelectionPoint {
+	x: number;
+	y: number;
+	/** Whether the point lies between terminal cells rather than on a cell. */
+	boundary?: boolean;
+}
+
 export interface Component {
 	/**
 	 * Render the component to lines for the given viewport width
@@ -121,6 +128,16 @@ export interface Component {
 
 	/** Optional normalized mouse handler. */
 	handleMouse?(event: TuiMouseEvent): TuiMouseEventResult | undefined;
+
+	/**
+	 * Optional handler for a drag selection that lies entirely inside this
+	 * component. Coordinates are component-local terminal cells. Return `true` to
+	 * own the selection so typing or backspace can act on it.
+	 */
+	handleSelection?(start: ComponentSelectionPoint, end: ComponentSelectionPoint, width: number): boolean;
+
+	/** Drop this component's owned selection, if any. */
+	clearSelection?(): void;
 
 	/**
 	 * If true, component receives key release events (Kitty protocol).

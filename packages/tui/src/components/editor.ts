@@ -370,6 +370,10 @@ export class Editor implements Component, Focusable {
 	// Character jump mode
 	private jumpMode: "forward" | "backward" | null = null;
 
+	// Text selected by a drag inside the editor. Typing replaces it, backspace and
+	// delete remove it. Cleared on blur and on any non-editing key.
+	private selection?: { start: { line: number; col: number }; end: { line: number; col: number } };
+
 	// Preferred visual column for vertical cursor movement (sticky column)
 	private preferredVisualCol: number | null = null;
 
@@ -701,16 +705,41 @@ export class Editor implements Component, Focusable {
 		if (event.type !== "click" || event.button !== "left") return undefined;
 		if (event.y <= 0 || event.y > this.renderedVisibleLineCount) return { handled: true, focus: true };
 
+		const position = this.getPositionAt(event.x, event.y, event.width, "start");
+		if (!position) return { handled: true, focus: true };
+
+		this.selection = undefined;
+		this.state.cursorLine = position.line;
+		this.setCursorCol(position.col);
+		this.lastAction = null;
+		this.exitHistoryBrowsing();
+		if (this.autocompleteState) this.updateAutocomplete();
+		return { handled: true, focus: true };
+	}
+
+	/**
+	 * Map an editor-local cell to a text position. `mode` selects how a point that
+	 * falls between graphemes resolves: to the left (`start`), the right (`end`),
+	 * or the nearest grapheme boundary.
+	 */
+	private getPositionAt(
+		x: number,
+		y: number,
+		width: number,
+		mode: "start" | "end" | "boundary",
+	): { line: number; col: number } | undefined {
+		if (y <= 0 || y > this.renderedVisibleLineCount) return undefined;
 		const visualLines = this.buildVisualLineMap(this.lastWidth);
-		const visualLineIndex = this.scrollOffset + event.y - 1;
+		const visualLineIndex = this.scrollOffset + y - 1;
 		const visualLine = visualLines[visualLineIndex];
-		if (!visualLine) return { handled: true, focus: true };
+		if (!visualLine) return undefined;
+
 		const logicalLine = this.state.lines[visualLine.logicalLine] ?? "";
 		const chunkEnd = visualLine.startCol + visualLine.length;
 		const chunk = logicalLine.slice(visualLine.startCol, chunkEnd);
-		const maxPadding = Math.max(0, Math.floor((event.width - 1) / 2));
+		const maxPadding = Math.max(0, Math.floor((width - 1) / 2));
 		const paddingX = Math.min(this.paddingX, maxPadding);
-		const targetColumn = Math.max(0, event.x - paddingX - visibleWidth(this.prefix));
+		const targetColumn = Math.max(0, x - paddingX - visibleWidth(this.prefix));
 		let visibleColumn = 0;
 		let targetIndex = chunk.length;
 		let lastGraphemeIndex = 0;
@@ -718,7 +747,7 @@ export class Editor implements Component, Focusable {
 			const nextColumn = visibleColumn + visibleWidth(grapheme.segment);
 			lastGraphemeIndex = grapheme.index;
 			if (targetColumn < nextColumn) {
-				targetIndex = grapheme.index;
+				targetIndex = mode === "end" ? grapheme.index + grapheme.segment.length : grapheme.index;
 				break;
 			}
 			visibleColumn = nextColumn;
@@ -728,16 +757,117 @@ export class Editor implements Component, Focusable {
 			visualLines[visualLineIndex + 1]?.logicalLine !== visualLine.logicalLine;
 		if (!isLastSegment && targetIndex === chunk.length && chunk.length > 0) targetIndex = lastGraphemeIndex;
 
-		this.state.cursorLine = visualLine.logicalLine;
-		this.setCursorCol(visualLine.startCol + targetIndex);
+		const col = visualLine.startCol + targetIndex;
+		// A position that lands inside an atomic marker (a paste or image marker)
+		// snaps out of it, so a selection never cuts a marker in half.
+		for (const segment of this.segment(logicalLine, "grapheme")) {
+			if (col > segment.index && col < segment.index + segment.segment.length) {
+				return {
+					line: visualLine.logicalLine,
+					col: mode === "end" ? segment.index + segment.segment.length : segment.index,
+				};
+			}
+		}
+
+		return { line: visualLine.logicalLine, col };
+	}
+
+	/** Take ownership of a drag selection that lies inside the editor. */
+	handleSelection(
+		start: { x: number; y: number; boundary?: boolean },
+		end: { x: number; y: number; boundary?: boolean },
+		width: number,
+	): boolean {
+		const startPosition = this.getPositionAt(start.x, start.y, width, "start");
+		const endPosition = this.getPositionAt(end.x, end.y, width, end.boundary ? "boundary" : "end");
+		if (!startPosition || !endPosition) return false;
+		if (startPosition.line === endPosition.line && startPosition.col === endPosition.col) return false;
+
+		this.selection = { start: startPosition, end: endPosition };
 		this.lastAction = null;
+		this.state.cursorLine = endPosition.line;
+		this.setCursorCol(endPosition.col);
+		return true;
+	}
+
+	clearSelection(): void {
+		this.selection = undefined;
+	}
+
+	private deleteSelection(): void {
+		if (!this.selection) return;
+		this.cancelAutocomplete();
 		this.exitHistoryBrowsing();
-		if (this.autocompleteState) this.updateAutocomplete();
-		return { handled: true, focus: true };
+		this.lastAction = null;
+		this.pushUndoSnapshot();
+		this.removeSelection();
+		this.onChange?.(this.getText());
+		this.tui.requestRender();
+	}
+
+	private replaceSelection(text: string): void {
+		if (!this.selection) return;
+		this.cancelAutocomplete();
+		this.exitHistoryBrowsing();
+		this.lastAction = null;
+		this.pushUndoSnapshot();
+		this.removeSelection();
+		this.insertCharacter(text, true);
+		this.lastAction = "type-word";
+	}
+
+	private removeSelection(): void {
+		const selection = this.selection;
+		if (!selection) return;
+		this.selection = undefined;
+		const selectedText =
+			selection.start.line === selection.end.line
+				? (this.state.lines[selection.start.line] ?? "").slice(selection.start.col, selection.end.col)
+				: [
+						(this.state.lines[selection.start.line] ?? "").slice(selection.start.col),
+						...this.state.lines.slice(selection.start.line + 1, selection.end.line),
+						(this.state.lines[selection.end.line] ?? "").slice(0, selection.end.col),
+					].join("\n");
+		const before = (this.state.lines[selection.start.line] ?? "").slice(0, selection.start.col);
+		const after = (this.state.lines[selection.end.line] ?? "").slice(selection.end.col);
+		this.state.lines.splice(selection.start.line, selection.end.line - selection.start.line + 1, before + after);
+		this.state.cursorLine = selection.start.line;
+		this.setCursorCol(selection.start.col);
+		this.removePastes(
+			new Set(
+				[...selectedText.matchAll(PASTE_MARKER_REGEX)]
+					.map((match) => Number(match[1]))
+					.filter((id) => this.pastes.has(id)),
+			),
+		);
+		this.removeImagesFromText(selectedText);
 	}
 
 	handleInput(data: string): void {
 		const kb = getKeybindings();
+
+		// An owned selection is consumed by an editing key: backspace and delete
+		// remove it, a printable character or paste replaces it. Any other key
+		// drops the selection and falls through to normal handling.
+		if (this.selection) {
+			if (
+				kb.matches(data, "tui.editor.deleteCharBackward") ||
+				matchesKey(data, "shift+backspace") ||
+				kb.matches(data, "tui.editor.deleteCharForward") ||
+				matchesKey(data, "shift+delete")
+			) {
+				this.deleteSelection();
+				return;
+			}
+			const replacement = matchesKey(data, "shift+space")
+				? " "
+				: (decodePrintableKey(data) ?? (data.charCodeAt(0) >= 32 ? data : undefined));
+			if (replacement !== undefined) {
+				this.replaceSelection(replacement);
+				return;
+			}
+			this.selection = undefined;
+		}
 
 		// Handle character jump mode (awaiting next character to jump to)
 		if (this.jumpMode !== null) {
@@ -1232,6 +1362,26 @@ export class Editor implements Component, Focusable {
 				.map((match) => Number(match[1]))
 				.filter((id) => this.images.has(id) && !remainingText.includes(`[Image ${id}]`)),
 		);
+	}
+
+	/**
+	 * Drop paste markers by id, shifting the surviving registry entries down so
+	 * the ids stay contiguous, and renumber the markers still present in the text.
+	 */
+	private removePastes(removedIds: Set<number>): void {
+		if (removedIds.size === 0) return;
+		const remaining = [...this.pastes].filter(([id]) => !removedIds.has(id));
+		const idMap = new Map(remaining.map(([id], index) => [id, index + 1]));
+		const remap = (text: string): string =>
+			text.replace(PASTE_MARKER_REGEX, (fullMatch, idGroup, suffixGroup = "") => {
+				const id = idMap.get(Number(idGroup));
+				return id === undefined ? fullMatch : `[paste #${id}${suffixGroup}]`;
+			});
+		const cursorPrefix = remap((this.state.lines[this.state.cursorLine] ?? "").slice(0, this.state.cursorCol));
+		this.pastes = new Map(remaining.map(([, content], index) => [index + 1, content]));
+		this.pasteCounter = this.pastes.size;
+		this.state.lines = this.state.lines.map(remap);
+		this.setCursorCol(cursorPrefix.length);
 	}
 
 	/**

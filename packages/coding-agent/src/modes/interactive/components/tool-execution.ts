@@ -39,24 +39,6 @@ import { keyHint } from "./keybinding-hints.ts";
 
 const FALLBACK_PREVIEW_LINES = 10;
 
-type ToolBlockStyle = "transparent" | "body" | "default";
-
-// Per-tool block background styling. write/edit are transparent on success;
-// read/bash use the dedicated toolBodyBg grey; everything else keeps the
-// state-based pending/success/error backgrounds.
-function toolBlockStyle(toolName: string): ToolBlockStyle {
-	switch (toolName) {
-		case "write":
-		case "edit":
-			return "transparent";
-		case "read":
-		case "bash":
-			return "body";
-		default:
-			return "default";
-	}
-}
-
 export interface ToolExecutionOptions {
 	showImages?: boolean;
 	imageWidthCells?: number;
@@ -302,30 +284,6 @@ export class ToolExecutionComponent extends Container {
 		return super.render(width);
 	}
 
-	private toolBlockBackground(): ((text: string) => string) | undefined {
-		// Failure keeps the same error background for every tool.
-		if (this.result?.isError) {
-			return (t: string) => theme.bg("toolErrorBg", t);
-		}
-		const style = toolBlockStyle(this.toolName);
-		if (this.isPartial) {
-			// Pending: only default tools keep the dim pending background.
-			if (style === "default") {
-				return (t: string) => theme.bg("toolPendingBg", t);
-			}
-			return undefined;
-		}
-		// Success
-		switch (style) {
-			case "default":
-				return (t: string) => theme.bg("toolSuccessBg", t);
-			case "body":
-				return (t: string) => theme.bg("toolBodyBg", t);
-			default:
-				return undefined;
-		}
-	}
-
 	override handleMouse(event: TuiMouseEvent): ReturnType<Container["handleMouse"]> {
 		if (!this.hasRendererDefinition() || this.getRenderShell() !== "self") return super.handleMouse(event);
 		if (event.y <= 0 || event.y > this.selfRenderHeight) return undefined;
@@ -337,14 +295,20 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private updateDisplay(): void {
-		const bgFn = this.toolBlockBackground();
+		const bgFn = this.result?.isError
+			? (text: string) => theme.bg("toolErrorBg", text)
+			: this.toolName === "write" || this.toolName === "edit"
+				? undefined
+				: this.isPartial
+					? (text: string) => theme.bg("toolPendingBg", text)
+					: (text: string) => theme.bg("toolSuccessBg", text);
 
 		let hasContent = false;
 		this.hideComponent = false;
 		if (this.hasRendererDefinition()) {
 			const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
 			if (renderContainer instanceof Box) {
-				renderContainer.setBgFn(bgFn);
+				renderContainer.setBgFn(bgFn ?? ((text) => text));
 			}
 			renderContainer.clear();
 
@@ -395,7 +359,7 @@ export class ToolExecutionComponent extends Container {
 				}
 			}
 		} else {
-			this.contentText.setCustomBgFn(bgFn ?? ((t: string) => t));
+			this.contentText.setCustomBgFn(bgFn ?? ((text) => text));
 			this.contentText.setText(this.formatToolExecution());
 			hasContent = true;
 		}
