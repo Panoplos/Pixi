@@ -201,6 +201,14 @@ describe("Token Statistics on Abort", () => {
 		});
 	});
 
+	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider", () => {
+		const llm = getModel("inco", "deepseek-v4.1-flash:fast");
+
+		it("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
+			await testTokensOnAbort(llm);
+		});
+	});
+
 	describe.skipIf(!process.env.BASETEN_API_KEY)("Baseten Provider", () => {
 		const llm = getModel("baseten", "zai-org/GLM-5.2");
 

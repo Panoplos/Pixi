@@ -3,13 +3,14 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
-import { getEffortThinkingLevelMap, type ModelsDevReasoningOption } from "./models-dev-reasoning-options.ts";
 import {
 	CLOUDFLARE_AI_GATEWAY_ANTHROPIC_BASE_URL,
 	CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL,
 	CLOUDFLARE_AI_GATEWAY_OPENAI_BASE_URL,
 	CLOUDFLARE_WORKERS_AI_BASE_URL,
 } from "../src/api/cloudflare.ts";
+import { fetchDeepInfraChatModels } from "../src/providers/deepinfra-catalog.ts";
+import { fetchIncoChatModels } from "../src/providers/inco-catalog.ts";
 import type {
 	AnthropicMessagesCompat,
 	Api,
@@ -19,6 +20,7 @@ import type {
 	OpenAICompletionsCompat,
 	OpenAIResponsesCompat,
 } from "../src/types.ts";
+import { getEffortThinkingLevelMap, type ModelsDevReasoningOption } from "./models-dev-reasoning-options.ts";
 import {
 	assertExactModelIds,
 	createModelDataManifest,
@@ -625,6 +627,7 @@ function detectOpenAICompletionsCompat(model: Model<"openai-completions">): Open
 	const isTogetherReasoningOnly = isTogether && TOGETHER_REASONING_ONLY_MODELS.has(model.id);
 	const isDeepSeek = provider === "deepseek" || baseUrl.toLowerCase().includes("deepseek.com");
 	const isDeepInfra = provider === "deepinfra" || baseUrl.includes("api.deepinfra.com");
+	const isInco = provider === "inco" || baseUrl.includes("api.inco.ai");
 
 	const isNonStandard =
 		isNvidia ||
@@ -642,7 +645,8 @@ function detectOpenAICompletionsCompat(model: Model<"openai-completions">): Open
 		isCloudflareWorkersAI ||
 		isCloudflareAiGateway ||
 		isAntLing ||
-		isDeepInfra;
+		isDeepInfra ||
+		isInco;
 
 	const useMaxTokens =
 		baseUrl.includes("chutes.ai") ||
@@ -653,7 +657,8 @@ function detectOpenAICompletionsCompat(model: Model<"openai-completions">): Open
 		isNvidia ||
 		isAntLing ||
 		isZai ||
-		isDeepInfra;
+		isDeepInfra ||
+		isInco;
 
 	const isGrok = provider === "xai" || baseUrl.includes("api.x.ai");
 	const isOpenRouterDeveloperRoleModel =
@@ -907,7 +912,7 @@ function applyThinkingLevelMetadata(model: Model<any>): void {
 	if (model.api === "anthropic-messages" && isAnthropicTemperatureUnsupportedModel(model.id)) {
 		mergeAnthropicMessagesCompat(model, { supportsTemperature: false });
 	}
-	if (model.api === "openai-completions" && model.id.includes("deepseek-v4")) {
+	if (model.api === "openai-completions" && model.provider !== "inco" && model.id.includes("deepseek-v4")) {
 		mergeThinkingLevelMap(
 			model,
 			model.provider === "openrouter"
@@ -1049,68 +1054,30 @@ async function fetchNvidiaNimModelIds(): Promise<Map<string, string>> {
 	}
 }
 
-/**
- * DeepInfra's public model catalog (no API key required). Only chat models are
- * included; embeddings/image/audio/video models are out of scope.
- */
-interface DeepInfraCatalogModel {
-	id: string;
-	name?: string;
-	metadata?: {
-		context_length?: number;
-		max_tokens?: number;
-		pricing?: {
-			input_tokens?: number;
-			output_tokens?: number;
-			cache_read_tokens?: number;
-		};
-		tags?: string[];
-	};
-}
-
-const DEEPINFRA_BASE_URL = "https://api.deepinfra.com/v1/openai";
-
 async function fetchDeepInfraModels(): Promise<Model<any>[]> {
 	try {
 		console.log("Fetching models from DeepInfra API...");
-		const response = await fetch(`${DEEPINFRA_BASE_URL}/models`);
-		if (!response.ok) throw new Error(`DeepInfra API returned ${response.status}`);
-		const data = (await response.json()) as { data?: DeepInfraCatalogModel[] };
-
-		const models: Model<any>[] = [];
-		for (const raw of data.data ?? []) {
-			const metadata = raw.metadata ?? {};
-			const tags = metadata.tags ?? [];
-			if (!tags.includes("chat")) continue;
-			const reasoning = tags.includes("reasoning");
-			const hasVision = tags.includes("vision") || tags.includes("vlm");
-			// Pricing is $/1M tokens; keep 4 decimals like models.dev catalogs.
-			const round4 = (value: number) => Math.round(value * 10_000) / 10_000;
-			models.push({
-				id: raw.id,
-				name: raw.name ?? raw.id.split("/").pop() ?? raw.id,
-				api: "openai-completions",
-				baseUrl: DEEPINFRA_BASE_URL,
-				provider: "deepinfra",
-				reasoning,
-				...(reasoning ? { thinkingLevelMap: { off: "none" } as NonNullable<Model<any>["thinkingLevelMap"]> } : {}),
-				input: hasVision ? ["text", "image"] : ["text"],
-				cost: {
-					input: round4(metadata.pricing?.input_tokens ?? 0),
-					output: round4(metadata.pricing?.output_tokens ?? 0),
-					cacheRead: round4(metadata.pricing?.cache_read_tokens ?? metadata.pricing?.input_tokens ?? 0),
-					cacheWrite: 0,
-				},
-				contextWindow: metadata.context_length ?? 128_000,
-				maxTokens: metadata.max_tokens ?? 4096,
-			});
-		}
+		const models = await fetchDeepInfraChatModels();
 		console.log(`Fetched ${models.length} chat models from DeepInfra`);
 		return models;
 	} catch (error) {
 		console.error("Failed to fetch DeepInfra models:", error);
 		if (generatorOptions.strict) throw error;
 		return [];
+	}
+}
+
+async function fetchIncoModels(): Promise<Model<any>[]> {
+	try {
+		const apiKey = process.env.INCO_API_KEY;
+		if (apiKey) console.log("Fetching models from Inco API...");
+		const models = await fetchIncoChatModels({ apiKey });
+		console.log(`Loaded ${models.length} chat models from Inco`);
+		return models;
+	} catch (error) {
+		console.error("Failed to fetch Inco models:", error);
+		if (generatorOptions.strict && process.env.INCO_API_KEY) throw error;
+		return fetchIncoChatModels();
 	}
 }
 
@@ -1734,6 +1701,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		}
 
 		// Process Cloudflare AI Gateway models
+		const cloudflareAIGatewayModelIds = new Set<string>();
 		if (data["cloudflare-ai-gateway"]?.models) {
 			for (const [prefixedId, model] of Object.entries(data["cloudflare-ai-gateway"].models)) {
 				const m = model as ModelsDevModel;
@@ -1768,6 +1736,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 				const compat =
 					upstream === "anthropic" || upstream === "workers-ai" ? { sendSessionAffinityHeaders: true } : undefined;
 
+				cloudflareAIGatewayModelIds.add(id);
 				models.push({
 					id,
 					name: m.name || id,
@@ -1785,6 +1754,41 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					contextWindow: m.limit?.context || 4096,
 					maxTokens: m.limit?.output || 4096,
 					...(compat ? { compat } : {}),
+				});
+				recordModelsDevReasoningOptions("cloudflare-ai-gateway", id, m);
+			}
+		}
+
+		// models.dev may omit Workers AI passthroughs from the AI Gateway provider
+		// list even though the gateway /compat endpoint supports routing to them.
+		// Mirror the Workers AI catalog under the documented workers-ai/ prefix so
+		// the gateway keeps its OpenAI-compatible /compat models stable.
+		if (data["cloudflare-workers-ai"]?.models) {
+			for (const [modelId, model] of Object.entries(data["cloudflare-workers-ai"].models)) {
+				const m = model as ModelsDevModel;
+				if (m.tool_call !== true) continue;
+
+				const id = `workers-ai/${modelId}`;
+				if (cloudflareAIGatewayModelIds.has(id)) continue;
+				cloudflareAIGatewayModelIds.add(id);
+
+				models.push({
+					id,
+					name: m.name || id,
+					api: "openai-completions",
+					provider: "cloudflare-ai-gateway",
+					baseUrl: CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL,
+					reasoning: m.reasoning === true,
+					input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+					cost: {
+						input: m.cost?.input || 0,
+						output: m.cost?.output || 0,
+						cacheRead: m.cost?.cache_read || 0,
+						cacheWrite: m.cost?.cache_write || 0,
+					},
+					contextWindow: m.limit?.context || 4096,
+					maxTokens: m.limit?.output || 4096,
+					compat: { sendSessionAffinityHeaders: true },
 				});
 				recordModelsDevReasoningOptions("cloudflare-ai-gateway", id, m);
 			}
@@ -2402,11 +2406,18 @@ async function generateModels() {
 	// AI Gateway: OpenAI-compatible catalog with tool-capable models
 	const modelsDevModels = await loadModelsDevData();
 	const deepInfraModels = await fetchDeepInfraModels();
+	const incoModels = await fetchIncoModels();
 	const openRouterModels = await fetchOpenRouterModels();
 	const aiGatewayModels = await fetchAiGatewayModels();
 
 	// Combine models (models.dev has priority)
-	const allModels = [...modelsDevModels, ...openRouterModels, ...aiGatewayModels, ...deepInfraModels].filter(
+	const allModels = [
+		...modelsDevModels,
+		...openRouterModels,
+		...aiGatewayModels,
+		...deepInfraModels,
+		...incoModels,
+	].filter(
 		(model) =>
 			!(model.provider === "xai" && XAI_BUILTIN_EXCLUDED_MODEL_IDS.has(model.id)) &&
 			!((model.provider === "opencode" || model.provider === "opencode-go") && model.id === "gpt-5.3-codex-spark"),
@@ -2649,6 +2660,7 @@ async function generateModels() {
 		if (
 			candidate.api === "openai-completions" &&
 			candidate.id.includes("deepseek-v4") &&
+			candidate.provider !== "inco" &&
 			!QWEN_TOKEN_PLAN_PROVIDER_IDS.has(candidate.provider)
 		) {
 			const preservesNativeReasoningEffort = candidate.provider === "openrouter" || candidate.provider === "opencode";

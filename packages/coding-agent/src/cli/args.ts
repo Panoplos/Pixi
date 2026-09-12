@@ -397,6 +397,7 @@ ${chalk.bold("Environment Variables:")}
   AZURE_OPENAI_DEPLOYMENT_NAME_MAP - Azure OpenAI model=deployment map (comma-separated)
   DEEPSEEK_API_KEY                 - DeepSeek API key
   DEEPINFRA_API_KEY                - DeepInfra API key
+  INCO_API_KEY                     - Inco API key
   NVIDIA_API_KEY                   - NVIDIA NIM API key
   GEMINI_API_KEY                   - Google Gemini API key
   GROQ_API_KEY                     - Groq API key

@@ -180,13 +180,13 @@ export class ModelRuntime implements Models {
 				? new FileModelsStore(options.modelsStorePath ?? join(dirname(modelsPath), "models-store.json"))
 				: new InMemoryCodingAgentModelsStore());
 		const builtinModelDataGeneratedAt = builtinProviderCatalog.getBuiltinModelDataGeneratedAt();
-		const providers = builtinProviderCatalog
-			.builtinProviders()
-			.map((provider) =>
-				provider.id === "radius"
-					? provider
-					: withRemoteCatalog(provider, options.catalogBaseUrl, builtinModelDataGeneratedAt),
-			);
+		const providers = builtinProviderCatalog.builtinProviders().map((provider) =>
+			// Native refreshModels already publishes a live catalog. Overlaying the
+			// pi.dev remote catalog would replace that implementation.
+			provider.refreshModels
+				? provider
+				: withRemoteCatalog(provider, options.catalogBaseUrl, builtinModelDataGeneratedAt),
+		);
 		const runtime = new ModelRuntime(
 			credentials,
 			config,

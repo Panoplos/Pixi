@@ -1549,6 +1549,8 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 	const isNvidia = provider === "nvidia" || baseUrl.includes("integrate.api.nvidia.com");
 	const isAntLing = provider === "ant-ling" || baseUrl.includes("api.ant-ling.com");
 	const isDeepSeek = provider === "deepseek" || baseUrl.toLowerCase().includes("deepseek.com");
+	const isDeepInfra = provider === "deepinfra" || baseUrl.includes("api.deepinfra.com");
+	const isInco = provider === "inco" || baseUrl.includes("api.inco.ai");
 
 	const isNonStandard =
 		isNvidia ||
@@ -1565,7 +1567,9 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		baseUrl.includes("opencode.ai") ||
 		isCloudflareWorkersAI ||
 		isCloudflareAiGateway ||
-		isAntLing;
+		isAntLing ||
+		isDeepInfra ||
+		isInco;
 
 	const useMaxTokens =
 		baseUrl.includes("chutes.ai") ||
@@ -1575,7 +1579,9 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		isTogether ||
 		isNvidia ||
 		isAntLing ||
-		isZai;
+		isZai ||
+		isDeepInfra ||
+		isInco;
 
 	const isGrok = provider === "xai" || baseUrl.includes("api.x.ai");
 	const isOpenRouterDeveloperRoleModel =

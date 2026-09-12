@@ -359,6 +359,17 @@ describe("Context overflow error handling", () => {
 		}, 120000);
 	});
 
+	describe.skipIf(!process.env.INCO_API_KEY)("Inco", () => {
+		it("Flash - should detect overflow via isContextOverflow", async () => {
+			const model = getModel("inco", "deepseek-v4.1-flash:fast");
+			const result = await testContextOverflow(model, process.env.INCO_API_KEY!);
+			logResult(result);
+
+			expect(result.stopReason).toBe("error");
+			expect(isContextOverflow(result.response, model.contextWindow)).toBe(true);
+		}, 120000);
+	});
+
 	// =============================================================================
 	// z.ai
 	// Special case: may return explicit overflow error text, may accept overflow silently,

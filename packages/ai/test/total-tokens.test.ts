@@ -413,6 +413,24 @@ describe("totalTokens field", () => {
 		});
 	});
 
+	describe.skipIf(!process.env.INCO_API_KEY)("Inco", () => {
+		it("should return totalTokens equal to sum of components", { retry: 3, timeout: 60000 }, async () => {
+			const llm = getModel("inco", "deepseek-v4.1-flash:fast");
+
+			console.log(`\nInco / ${llm.id}:`);
+			const { first, second } = await testTotalTokensWithCache(llm, {
+				apiKey: process.env.INCO_API_KEY,
+				reasoningEffort: "high",
+			});
+
+			logUsage("First request", first);
+			logUsage("Second request", second);
+
+			assertTotalTokensEqualsComponents(first);
+			assertTotalTokensEqualsComponents(second);
+		});
+	});
+
 	// =========================================================================
 	// Baseten
 	// =========================================================================

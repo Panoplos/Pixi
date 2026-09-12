@@ -62,6 +62,7 @@ Unified LLM API with provider collections, automatic auth resolution, token and 
 - **OpenAI Codex** (ChatGPT Plus/Pro subscription, requires OAuth, see below)
 - **DeepSeek**
 - **DeepInfra**
+- **Inco**
 - **NVIDIA NIM**
 - **Anthropic**
 - **Google**
@@ -419,6 +420,7 @@ Built-in providers resolve these env vars (Node.js; in browsers pass `apiKey` ex
 | Anthropic | `ANTHROPIC_API_KEY` or `ANTHROPIC_OAUTH_TOKEN` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
 | DeepInfra | `DEEPINFRA_API_KEY` |
+| Inco | `INCO_API_KEY` |
 | Google | `GEMINI_API_KEY` |
 | Vertex AI | `GOOGLE_CLOUD_API_KEY` or `GOOGLE_CLOUD_PROJECT` (or `GCLOUD_PROJECT`) + `GOOGLE_CLOUD_LOCATION` + ADC |
 | Mistral | `MISTRAL_API_KEY` |

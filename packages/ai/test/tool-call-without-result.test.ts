@@ -206,6 +206,14 @@ describe("Tool Call Without Result Tests", () => {
 		});
 	});
 
+	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider", () => {
+		const model = getModel("inco", "deepseek-v4.1-flash:fast");
+
+		it("should filter out tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
+			await testToolCallWithoutResult(model, { reasoningEffort: "high" });
+		});
+	});
+
 	describe.skipIf(!process.env.BASETEN_API_KEY)("Baseten Provider", () => {
 		const model = getModel("baseten", "zai-org/GLM-5.2");
 

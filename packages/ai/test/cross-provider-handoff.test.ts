@@ -110,6 +110,7 @@ const PROVIDER_MODEL_PAIRS: ProviderModelPair[] = [
 	{ provider: "together", model: "moonshotai/Kimi-K2.6", label: "together-kimi-k2.6" },
 	// DeepInfra
 	{ provider: "deepinfra", model: "deepseek-ai/DeepSeek-V4-Flash-0731", label: "deepinfra-deepseek-v4-flash" },
+	{ provider: "inco", model: "deepseek-v4.1-flash:fast", label: "inco-deepseek-v4.1-flash" },
 	// Baseten
 	{ provider: "baseten", model: "zai-org/GLM-5.2", label: "baseten-glm-5.2" },
 	// Kimi For Coding
