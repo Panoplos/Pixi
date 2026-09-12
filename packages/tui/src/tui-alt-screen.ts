@@ -13,6 +13,7 @@ import {
 	getScrollbarGeometry,
 	getScrollViewBox,
 	getScrollViewsAt,
+	type LayoutBox,
 	type LayoutFrame,
 	renderLayoutFrame,
 	type ScrollbarGeometry,
@@ -1426,69 +1427,106 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	}
 
 	/**
-	 * Offer a screen selection to the focused component when the selection lies
+	 * Offer a drag selection to the focused component when the selection lies
 	 * inside it. Returns that component when it accepted the range.
+	 *
+	 * Selection points live either in screen cells or, inside a scroll view, in
+	 * that view's content coordinates. Both are translated to component-local
+	 * cells using the component's layout box, so an editor nested in a scroll view
+	 * still owns its selection.
 	 */
 	private handleComponentSelection(selection: { start: SelectionPoint; end: SelectionPoint }): Component | undefined {
-		if (selection.start.scrollView || selection.end.scrollView) return undefined;
 		const component = this.getFocusedComponent();
 		if (!component?.handleSelection || !this.currentLayout || this.hasOverlay()) return undefined;
+		if (selection.start.scrollView !== selection.end.scrollView) return undefined;
 
-		const width = Math.max(1, this.terminal.columns);
-		const geometry = this.findComponentGeometry(this.currentLayout.root.component, component, width);
+		const scrollView = selection.start.scrollView;
+		const scrollBox = scrollView ? getScrollViewBox(this.currentLayout, scrollView) : undefined;
+		if (scrollView && !scrollBox) return undefined;
+		const geometry = this.findComponentGeometry(component);
 		if (!geometry) return undefined;
-		const { offsetX, offsetY, width: componentWidth } = geometry;
-		const insidePoint = (col: number, row: number, boundary: boolean | undefined): boolean =>
-			col >= offsetX &&
-			(boundary ? col <= offsetX + componentWidth : col < offsetX + componentWidth) &&
-			row >= offsetY &&
-			row < offsetY + geometry.height;
-		if (!insidePoint(selection.start.col, selection.start.row, selection.start.boundary)) return undefined;
-		if (!insidePoint(selection.end.col, selection.end.row, selection.end.boundary)) return undefined;
+
+		// Selection points are either screen cells or, inside a scroll view, that
+		// view's content coordinates. Convert both to component-local cells.
+		const localX = (col: number): number => (scrollBox ? col - (geometry.x - scrollBox.rect.x) : col - geometry.x);
+		const localY = (row: number): number => {
+			if (!scrollBox || !scrollView) return row - geometry.y;
+			const screenRow = scrollBox.rect.y + (row - scrollView.scrollTop);
+			return screenRow - geometry.y;
+		};
+		const width = geometry.width;
+		const height = geometry.height;
+		const inside = (col: number, row: number, boundary: boolean | undefined): boolean => {
+			const lx = localX(col);
+			const ly = localY(row);
+			return lx >= 0 && (boundary ? lx <= width : lx < width) && ly >= 0 && ly < height;
+		};
+		if (!inside(selection.start.col, selection.start.row, selection.start.boundary)) return undefined;
+		if (!inside(selection.end.col, selection.end.row, selection.end.boundary)) return undefined;
 
 		const accepted = component.handleSelection(
 			{
-				x: selection.start.col - offsetX,
-				y: selection.start.row - offsetY,
+				x: localX(selection.start.col),
+				y: localY(selection.start.row),
 				...(selection.start.boundary ? { boundary: true } : {}),
 			},
 			{
-				x: selection.end.col - offsetX,
-				y: selection.end.row - offsetY,
+				x: localX(selection.end.col),
+				y: localY(selection.end.row),
 				...(selection.end.boundary ? { boundary: true } : {}),
 			},
-			componentWidth,
+			width,
 		);
 		return accepted ? component : undefined;
 	}
 
 	/**
-	 * Locate a descendant component in the layout and return its top-left offset
-	 * and size, mirroring how `Container` stacks and offsets its children.
+	 * Locate a component in the layout and return its screen rect.
+	 *
+	 * The layout assigns a `LayoutBox` to every component it stacks, so a box
+	 * match is the authoritative answer. A component that shares a box with an
+	 * ancestor (a plain wrapper container) has none, so those are found by
+	 * descending the owning box's component children in render order.
 	 */
 	private findComponentGeometry(
-		root: Component,
 		target: Component,
-		width: number,
-	): { offsetX: number; offsetY: number; width: number; height: number } | undefined {
-		const walk = (
-			component: Component,
-			offsetX: number,
-			offsetY: number,
-			width: number,
-		): { offsetX: number; offsetY: number; width: number; height: number } | undefined => {
-			const height = component.render(width).length;
-			if (component === target) return { offsetX, offsetY, width, height };
-			if (!(component instanceof Container)) return undefined;
-			let childY = offsetY;
-			for (const child of component.children) {
-				const found = walk(child, offsetX, childY, width);
-				if (found) return found;
-				childY += child.render(width).length;
+	): { x: number; y: number; width: number; height: number } | undefined {
+		const visitBox = (box: LayoutBox): { x: number; y: number; width: number; height: number } | undefined => {
+			if (box.component === target) {
+				return { x: box.rect.x, y: box.rect.y, width: box.rect.width, height: box.rect.height };
 			}
-			return undefined;
+			// Boxed descendants carry authoritative rects, so exhaust those before
+			// falling back to height accumulation for unboxed components.
+			for (const child of box.children) {
+				const found = visitBox(child);
+				if (found) return found;
+			}
+			return this.findWithinComponent(box.component, target, box.rect.x, box.rect.y, box.rect.width);
 		};
-		return walk(root, 0, 0, width);
+		return visitBox(this.currentLayout!.root);
+	}
+
+	/**
+	 * Find a descendant component rendered directly by `container`, offset by the
+	 * heights the container allocates to preceding siblings.
+	 */
+	private findWithinComponent(
+		container: Component,
+		target: Component,
+		left: number,
+		top: number,
+		width: number,
+	): { x: number; y: number; width: number; height: number } | undefined {
+		if (!(container instanceof Container) || container === target) return undefined;
+		let childY = top;
+		for (const child of container.children) {
+			const height = child.render(width).length;
+			if (child === target) return { x: left, y: childY, width, height };
+			const nested = this.findWithinComponent(child, target, left, childY, width);
+			if (nested) return nested;
+			childY += height;
+		}
+		return undefined;
 	}
 
 	private getSelectionColumns(
