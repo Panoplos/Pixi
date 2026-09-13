@@ -120,3 +120,22 @@ test("deleting a selected paste marker removes its registry entry", async () => 
 	assert.strictEqual(editor.getText(), "[paste #1 1001 chars]");
 	tui.stop();
 });
+
+test("block cursor parks on the last selected grapheme while a selection exists", async () => {
+	const { terminal, tui, editor } = await createEditor("hello 🙂 world");
+	// Drag over "world": the caret state stays at the insertion point after
+	// it, but the rendered block replaces the last selected character.
+	drag(terminal, 5, 3, 9, 3);
+	const rows = editor.render(16);
+	assert.ok(
+		rows.some((row) => row.includes("\x1b[7md\x1b[0m")),
+		`block cursor should replace the last selected char: ${JSON.stringify(rows)}`,
+	);
+	editor.clearSelection();
+	const cleared = editor.render(16);
+	assert.ok(
+		!cleared.some((row) => row.includes("\x1b[7md\x1b[0m")) && cleared.some((row) => row.includes("\x1b[7m \x1b[0m")),
+		`block cursor should return to the insertion point after the selection clears: ${JSON.stringify(cleared)}`,
+	);
+	tui.stop();
+});

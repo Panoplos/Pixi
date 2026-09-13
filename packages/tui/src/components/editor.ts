@@ -790,6 +790,26 @@ export class Editor implements Component, Focusable {
 		return true;
 	}
 
+	/**
+	 * Step a position back over the grapheme that ends at `position`; a position
+	 * at a line start steps back over the previous line's newline.
+	 */
+	private backUpOneGrapheme(position: { line: number; col: number }): { line: number; col: number } {
+		if (position.col <= 0) {
+			return position.line === 0
+				? position
+				: { line: position.line - 1, col: (this.state.lines[position.line - 1] ?? "").length };
+		}
+		const line = this.state.lines[position.line] ?? "";
+		let previous = 0;
+		for (const segment of this.segment(line.slice(0, position.col), "grapheme")) {
+			const next = segment.index + segment.segment.length;
+			if (next >= position.col) return { line: position.line, col: segment.index };
+			previous = next;
+		}
+		return { line: position.line, col: previous };
+	}
+
 	clearSelection(): void {
 		this.selection = undefined;
 	}
@@ -1171,6 +1191,13 @@ export class Editor implements Component, Focusable {
 	private layoutText(contentWidth: number): LayoutLine[] {
 		const layoutLines: LayoutLine[] = [];
 
+		// While a selection exists the caret state stays at the insertion point
+		// after the selection, but the visible block cursor parks on the last
+		// selected grapheme, the way a click places it on a grapheme.
+		const renderCursor = this.selection
+			? this.backUpOneGrapheme(this.selection.end)
+			: { line: this.state.cursorLine, col: this.state.cursorCol };
+
 		if (this.state.lines.length === 0 || (this.state.lines.length === 1 && this.state.lines[0] === "")) {
 			// Empty editor
 			layoutLines.push({
@@ -1184,7 +1211,7 @@ export class Editor implements Component, Focusable {
 		// Process each logical line
 		for (let i = 0; i < this.state.lines.length; i++) {
 			const line = this.state.lines[i] || "";
-			const isCurrentLine = i === this.state.cursorLine;
+			const isCurrentLine = i === renderCursor.line;
 			const lineVisibleWidth = visibleWidth(line);
 
 			if (lineVisibleWidth <= contentWidth) {
@@ -1193,7 +1220,7 @@ export class Editor implements Component, Focusable {
 					layoutLines.push({
 						text: line,
 						hasCursor: true,
-						cursorPos: this.state.cursorCol,
+						cursorPos: renderCursor.col,
 					});
 				} else {
 					layoutLines.push({
@@ -1209,7 +1236,7 @@ export class Editor implements Component, Focusable {
 					const chunk = chunks[chunkIndex];
 					if (!chunk) continue;
 
-					const cursorPos = this.state.cursorCol;
+					const cursorPos = renderCursor.col;
 					const isLastChunk = chunkIndex === chunks.length - 1;
 
 					// Determine if cursor is in this chunk
