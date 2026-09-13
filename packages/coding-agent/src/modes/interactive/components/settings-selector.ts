@@ -46,7 +46,17 @@ const DEFAULT_PROJECT_TRUST_BY_LABEL = new Map(
 	Object.entries(DEFAULT_PROJECT_TRUST_LABELS).map(([value, label]) => [label, value as DefaultProjectTrust]),
 );
 
+export const SESSION_SUGGESTION_MODEL = "(session model)";
+
 export interface SettingsConfig {
+	/** Factory for the suggestion-model row's submenu; built by InteractiveMode (needs TUI + model runtime). */
+	buildSuggestionModelSubmenu: (
+		currentValue: string,
+		done: (selectedValue?: string, options?: { navigateTo?: string }) => void,
+	) => Component;
+	suggestionsEnabled: boolean;
+	/** "provider/model" pattern for the suggestion model; undefined = session model. */
+	suggestionModel?: string;
 	autoCompact: boolean;
 	defaultModel: string;
 	currentModel?: Model<any>;
@@ -89,6 +99,8 @@ export interface SettingsConfig {
 }
 
 export interface SettingsCallbacks {
+	onSuggestionsEnabledChange: (enabled: boolean) => void;
+	onSuggestionModelChange: (pattern: string | undefined) => void;
 	onAutoCompactChange: (enabled: boolean) => void;
 	onShowImagesChange: (enabled: boolean) => void;
 	onImageWidthCellsChange: (width: number) => void;
@@ -458,6 +470,20 @@ export class SettingsSelectorComponent extends Container {
 		const currentModelKey = config.currentModel ? modelSettingKey(config.currentModel) : undefined;
 
 		const items: SettingItem[] = [
+			{
+				id: "suggestions",
+				label: "Suggestions",
+				description: "Suggest your next message as ghost text in the input after a turn finishes; Tab inserts it",
+				currentValue: config.suggestionsEnabled ? "true" : "false",
+				values: ["true", "false"],
+			},
+			{
+				id: "suggestion-model",
+				label: "Suggestion model",
+				description: "Model used to generate next-message suggestions; picker is the same as /model",
+				currentValue: config.suggestionModel ?? SESSION_SUGGESTION_MODEL,
+				submenu: (currentValue, done) => config.buildSuggestionModelSubmenu(currentValue, done),
+			},
 			{
 				id: "autocompact",
 				label: "Auto-compact",
@@ -829,6 +855,13 @@ export class SettingsSelectorComponent extends Container {
 			getSettingsListTheme(),
 			(id, newValue) => {
 				switch (id) {
+					case "suggestions":
+						callbacks.onSuggestionsEnabledChange(newValue === "true");
+						break;
+					case "suggestion-model":
+						// Reset choice is "(session model)"; everything else is a "provider/model" pattern.
+						callbacks.onSuggestionModelChange(newValue === SESSION_SUGGESTION_MODEL ? undefined : newValue);
+						break;
 					case "autocompact":
 						callbacks.onAutoCompactChange(newValue === "true");
 						break;

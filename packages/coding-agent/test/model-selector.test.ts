@@ -79,6 +79,42 @@ describe("model selector", () => {
 		expect(saveDefault).toHaveBeenCalledWith(currentModel);
 	});
 
+	it("offers a reset row when requested and hides it while filtering", async () => {
+		harness = await createHarness({
+			models: [
+				{ id: "model-a", name: "Model A", reasoning: true },
+				{ id: "model-b", name: "Model B", reasoning: true },
+			],
+		});
+		const reset = vi.fn();
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			undefined, // no override: the reset row is the current selection
+			harness.session.modelRuntime,
+			[],
+			() => {},
+			() => {},
+			undefined,
+			undefined,
+			undefined,
+			reset,
+			"(session model)",
+		);
+
+		const rendered = (): string => stripAnsi(selector.render(120).join("\n"));
+		expect(rendered()).toContain("→ ✓ (session model)");
+
+		selector.handleInput("\x1b[B"); // down: reset -> first model
+		expect(rendered()).not.toContain("→ ✓ (session model)");
+		selector.handleInput("\x1b[A"); // up: back to reset
+		selector.handleInput("\r"); // pick the reset row
+		expect(reset).toHaveBeenCalledTimes(1);
+
+		selector.handleInput("a"); // filtering hides the reset row
+		expect(rendered()).not.toContain("(session model)");
+		selector.dispose();
+	});
+
 	it("lists every catalog that failed to refresh", async () => {
 		harness = await createHarness();
 		vi.spyOn(harness.session.modelRuntime, "refresh").mockResolvedValue({

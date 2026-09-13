@@ -85,9 +85,11 @@ import { createCompactionSummaryMessage } from "../../core/messages.ts";
 import {
 	defaultModelPerProvider,
 	findExactModelReferenceMatch,
+	parseModelPattern,
 	resolveModelScopeFromModels,
 } from "../../core/model-resolver.ts";
 import { CredentialSynchronizationError } from "../../core/model-runtime.ts";
+import { extractNextPromptInput, suggestNextPrompt } from "../../core/next-prompt.ts";
 import { DefaultPackageManager } from "../../core/package-manager.ts";
 import type { ResourceDiagnostic } from "../../core/resource-loader.ts";
 import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../core/session-cwd.ts";
@@ -140,7 +142,7 @@ import {
 } from "./components/oauth-selector.ts";
 import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.ts";
 import { SessionSelectorComponent } from "./components/session-selector.ts";
-import { SettingsSelectorComponent } from "./components/settings-selector.ts";
+import { SESSION_SUGGESTION_MODEL, SettingsSelectorComponent } from "./components/settings-selector.ts";
 import { SkillInvocationMessageComponent } from "./components/skill-invocation-message.ts";
 import {
 	BranchSummaryStatusIndicator,
@@ -416,6 +418,9 @@ export class InteractiveMode {
 	/** Currently pending editor image attachments, keyed by marker ID. */
 	private pendingImageAttachments = new Map<number, { path: string; hash: string }>();
 	private pendingUserInputs: Array<{ text: string; images: ImageContent[] }> = [];
+
+	// In-flight next-prompt suggestion generation (at most one, cancelable).
+	private suggestionAbort?: AbortController;
 	private activeStatusIndicator: StatusIndicator | undefined = undefined;
 	private activeWorkingIndicatorEmbedded = false;
 	private readonly idleStatus = new IdleStatus();
@@ -2170,6 +2175,81 @@ export class InteractiveMode {
 		}
 	}
 
+	/**
+	 * Submenu for the "Suggestion model" settings row: the same /model picker,
+	 * embedded. Picking a model stores "provider/model"; the reset row stores
+	 * the session-model default. Ctrl+S (save as startup default) is
+	 * intentionally not offered here.
+	 */
+	private buildSuggestionModelSubmenu(
+		currentValue: string,
+		done: (selectedValue?: string, options?: { navigateTo?: string }) => void,
+	): ModelSelectorComponent {
+		const resolved =
+			currentValue === SESSION_SUGGESTION_MODEL
+				? undefined
+				: parseModelPattern(currentValue, [...this.session.modelRuntime.getAvailableSnapshot()]).model;
+		return new ModelSelectorComponent(
+			this.ui,
+			resolved,
+			this.session.modelRuntime,
+			this.session.scopedModels,
+			(model) => done(`${model.provider}/${model.id}`),
+			() => done(),
+			undefined, // initialSearchInput
+			undefined, // onSelectAsDefault: suggestions must not touch the startup default
+			undefined, // defaultModel badge
+			() => done(SESSION_SUGGESTION_MODEL),
+			SESSION_SUGGESTION_MODEL,
+		);
+	}
+
+	/**
+	 * Show a suggested next user message as ghost text in the empty input after
+	 * a turn finishes. Failures are silent: suggestions are a nicety, never a
+	 * source of errors.
+	 */
+	private maybeStartSuggestion(event: { messages: AgentMessage[]; willRetry: boolean }): void {
+		if (event.willRetry || this.pendingUserInputs.length > 0) return;
+		if (!this.settingsManager.getSuggestionsEnabled()) return;
+		if (this.editor.getText().trim() !== "") return;
+		const input = extractNextPromptInput(event.messages);
+		if (!input) return;
+
+		this.clearSuggestionState();
+		const sessionModel = this.session.model;
+		if (!sessionModel) return;
+		let model: Model<any> = sessionModel;
+		const modelPattern = this.settingsManager.getSuggestionsModel();
+		if (modelPattern) {
+			// Unresolvable pattern falls back to the session model.
+			model = parseModelPattern(modelPattern, [...this.session.modelRuntime.getAvailableSnapshot()]).model ?? model;
+		}
+
+		const abort = new AbortController();
+		this.suggestionAbort = abort;
+		void suggestNextPrompt({ modelRuntime: this.session.modelRuntime, model }, input, abort.signal)
+			.then((suggestion) => {
+				if (abort.signal.aborted || suggestion === undefined) return;
+				if (this.session.isStreaming || this.session.isCompacting || this.pendingUserInputs.length > 0) return;
+				// The user may have typed while the suggestion was generated; their
+				// input supersedes the suggestion.
+				if (this.editor.getText().trim() !== "") return;
+				this.editor.setGhostSuggestion?.(suggestion);
+			})
+			.catch(() => {})
+			.finally(() => {
+				if (this.suggestionAbort === abort) this.suggestionAbort = undefined;
+			});
+	}
+
+	/** Drop any pending or displayed suggestion; keep already-typed text. */
+	private clearSuggestionState(): void {
+		this.suggestionAbort?.abort();
+		this.suggestionAbort = undefined;
+		this.editor.clearGhostSuggestion?.();
+	}
+
 	private showWorkingStatusIndicator(): void {
 		const colorFn = isWorkingStatusEditor(this.editor)
 			? (text: string) =>
@@ -3312,6 +3392,7 @@ export class InteractiveMode {
 
 		switch (event.type) {
 			case "agent_start":
+				this.clearSuggestionState();
 				this.pendingTools.clear();
 				// Restore main escape handler if retry handler is still active
 				// (retry success event fires later, but we need main handler now)
@@ -3559,6 +3640,7 @@ export class InteractiveMode {
 				this.standaloneToolCall.clear();
 				this.sectionByToolCall.clear();
 				this.thinkingStartMs = undefined;
+				this.maybeStartSuggestion(event);
 
 				this.ui.requestRender();
 				break;
@@ -5059,6 +5141,10 @@ export class InteractiveMode {
 			const defaultModel = defaultProvider && defaultModelId ? `${defaultProvider}/${defaultModelId}` : "not set";
 			selector = new SettingsSelectorComponent(
 				{
+					suggestionsEnabled: this.settingsManager.getSuggestionsEnabled(),
+					suggestionModel: this.settingsManager.getSuggestionsModel(),
+					buildSuggestionModelSubmenu: (currentValue, done) =>
+						this.buildSuggestionModelSubmenu(currentValue, done),
 					autoCompact: this.session.autoCompactionEnabled,
 					defaultModel,
 					currentModel: this.session.model,
@@ -5100,6 +5186,14 @@ export class InteractiveMode {
 					warnings: this.settingsManager.getWarnings(),
 				},
 				{
+					onSuggestionsEnabledChange: (enabled) => {
+						this.settingsManager.setSuggestionsEnabled(enabled);
+						if (!enabled) this.clearSuggestionState();
+					},
+					onSuggestionModelChange: (pattern) => {
+						this.settingsManager.setSuggestionsModel(pattern);
+						this.clearSuggestionState();
+					},
 					onAutoCompactChange: (enabled) => {
 						this.session.setAutoCompactionEnabled(enabled);
 						this.footer.setAutoCompactEnabled(enabled);

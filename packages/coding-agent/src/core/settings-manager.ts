@@ -208,6 +208,13 @@ export interface Settings {
 	fullscreenScrollbar?: ScrollViewScrollbar; // default: "auto"; no effect in regular TUI mode
 	modelContexts?: Record<string, ModelContextSettings>; // Per-model context config keyed by `${provider}/${id}`
 	fullscreenCopyOnSelect?: boolean; // default: true; no effect in regular TUI mode
+	suggestions?: SuggestionsSettings;
+}
+
+/** Suggested next-user-message settings (ghost text after a turn finishes). */
+export interface SuggestionsSettings {
+	enabled?: boolean; // default: true
+	model?: string; // "provider/model" pattern; default: the active session model
 }
 
 function isMergeableObject(value: unknown): value is Record<string, unknown> {
@@ -1319,6 +1326,34 @@ export class SettingsManager {
 		}
 		this.globalSettings.terminal.showTerminalProgress = enabled;
 		this.markModified("terminal", "showTerminalProgress");
+		this.save();
+	}
+
+	getSuggestionsEnabled(): boolean {
+		return this.settings.suggestions?.enabled ?? true;
+	}
+
+	setSuggestionsEnabled(enabled: boolean): void {
+		if (!this.globalSettings.suggestions) {
+			this.globalSettings.suggestions = {};
+		}
+		this.globalSettings.suggestions.enabled = enabled;
+		this.markModified("suggestions", "enabled");
+		this.save();
+	}
+
+	getSuggestionsModel(): string | undefined {
+		return this.settings.suggestions?.model;
+	}
+
+	setSuggestionsModel(pattern: string | undefined): void {
+		if (!this.globalSettings.suggestions) {
+			this.globalSettings.suggestions = {};
+		}
+		pattern = pattern?.trim() || undefined;
+		if (pattern === undefined) delete this.globalSettings.suggestions.model;
+		else this.globalSettings.suggestions.model = pattern;
+		this.markModified("suggestions", "model");
 		this.save();
 	}
 

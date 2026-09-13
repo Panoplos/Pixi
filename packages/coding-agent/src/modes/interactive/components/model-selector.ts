@@ -70,6 +70,9 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private onSelectCallback: (model: Model<any>) => void;
 	private onSelectAsDefaultCallback?: (model: Model<any>) => void;
 	private onCancelCallback: () => void;
+	/** When set, an unfiltered "reset" row (e.g. "(session model)") is offered first. */
+	private onSelectReset?: () => void;
+	private resetLabel?: string;
 	private errorMessage?: string;
 	private refreshStatusMessage = "Refreshing model catalogs…";
 	private refreshStatusSuccess = false;
@@ -93,6 +96,8 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		initialSearchInput?: string,
 		onSelectAsDefault?: (model: Model<any>) => void,
 		defaultModel?: DefaultModelReference,
+		onSelectReset?: () => void,
+		resetLabel?: string,
 	) {
 		super();
 
@@ -105,6 +110,8 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.onSelectCallback = onSelect;
 		this.onSelectAsDefaultCallback = onSelectAsDefault;
 		this.onCancelCallback = onCancel;
+		this.onSelectReset = onSelectReset;
+		this.resetLabel = resetLabel;
 
 		// Add top border
 		this.addChild(new DynamicBorder());
@@ -168,6 +175,11 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		void this.refreshModels();
 	}
 
+	/** The reset row is offered only while the search box is unfiltered. */
+	private showResetRow(): boolean {
+		return this.onSelectReset !== undefined && this.searchInput.getValue().trim() === "";
+	}
+
 	private loadModelsFromSnapshot(): void {
 		const models = this.modelRuntime.getAvailableSnapshot().map((model: Model<any>) => ({
 			provider: model.provider,
@@ -190,7 +202,11 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.filteredModels = this.activeModels;
 		const currentIndex = this.filteredModels.findIndex((item) => modelsAreEqual(this.currentModel, item.model));
 		this.selectedIndex =
-			currentIndex >= 0 ? currentIndex : Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
+			currentIndex >= 0
+				? currentIndex
+				: this.showResetRow()
+					? -1
+					: Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
 	}
 
 	private async refreshModels(): Promise<void> {
@@ -317,7 +333,12 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		// When filtering by a query, move the selector to the top row so the best
 		// match is highlighted. When the query is cleared, keep the current position
 		// clamped to the (restored) list length.
-		this.selectedIndex = query ? 0 : Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
+		this.selectedIndex = query
+			? 0
+			: Math.max(
+					Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1)),
+					this.showResetRow() ? -1 : 0,
+				);
 		this.updateList();
 	}
 
@@ -326,8 +347,15 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 		// Build a flat render list: a blank spacer precedes each lab group header
 		// (except the first), so navigation stays mapped to the underlying model index.
-		type Row = { kind: "gap" } | { kind: "header"; lab: string } | { kind: "item"; index: number };
+		type Row =
+			| { kind: "gap" }
+			| { kind: "header"; lab: string }
+			| { kind: "item"; index: number }
+			| { kind: "reset" };
 		const rows: Row[] = [];
+		if (this.showResetRow()) {
+			rows.push({ kind: "reset" });
+		}
 		let lastLab: string | undefined;
 		for (let i = 0; i < this.filteredModels.length; i++) {
 			const item = this.filteredModels[i];
@@ -339,7 +367,11 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			rows.push({ kind: "item", index: i });
 		}
 
-		const selectedRow = rows.findIndex((row) => row.kind === "item" && row.index === this.selectedIndex);
+		const selectedRow = rows.findIndex(
+			(row) =>
+				(row.kind === "item" && row.index === this.selectedIndex) ||
+				(row.kind === "reset" && this.selectedIndex < 0),
+		);
 
 		const maxVisible = 10;
 		const startRow = Math.max(0, Math.min(selectedRow - Math.floor(maxVisible / 2), rows.length - maxVisible));
@@ -351,6 +383,22 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 			if (row.kind === "gap") {
 				this.listContainer.addChild(new Spacer(1));
+				continue;
+			}
+
+			if (row.kind === "reset") {
+				const isSelected = this.selectedIndex < 0;
+				const isCurrent = this.currentModel === undefined;
+				const cursor = isSelected ? theme.fg("accent", "→ ") : "  ";
+				const currentMarker = isCurrent ? theme.fg("accent", "✓ ") : "  ";
+				const label = this.resetLabel ?? "(session model)";
+				this.listContainer.addChild(
+					new Text(
+						`${cursor}${currentMarker}${isSelected ? theme.fg("accent", label) : theme.fg("muted", label)}`,
+						0,
+						0,
+					),
+				);
 				continue;
 			}
 
@@ -390,6 +438,11 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			}
 		} else if (this.filteredModels.length === 0) {
 			this.listContainer.addChild(new Text(theme.fg("muted", "  No matching models"), 0, 0));
+		} else if (this.selectedIndex < 0) {
+			this.listContainer.addChild(new Spacer(1));
+			this.listContainer.addChild(
+				new Text(theme.fg("muted", `  Model Name: ${this.resetLabel ?? "(session model)"}`), 0, 0),
+			);
 		} else {
 			const selected = this.filteredModels[this.selectedIndex];
 			this.listContainer.addChild(new Spacer(1));
@@ -415,20 +468,27 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			}
 			return;
 		}
+		const minIndex = this.showResetRow() ? -1 : 0;
+		const maxIndex = this.filteredModels.length - 1;
 		// Up arrow - wrap to bottom when at top
 		if (kb.matches(keyData, "tui.select.up")) {
-			if (this.filteredModels.length === 0) return;
-			this.selectedIndex = this.selectedIndex === 0 ? this.filteredModels.length - 1 : this.selectedIndex - 1;
+			if (this.filteredModels.length === 0 && minIndex === 0) return;
+			this.selectedIndex = this.selectedIndex === minIndex ? maxIndex : this.selectedIndex - 1;
 			this.updateList();
 		}
 		// Down arrow - wrap to top when at bottom
 		else if (kb.matches(keyData, "tui.select.down")) {
-			if (this.filteredModels.length === 0) return;
-			this.selectedIndex = this.selectedIndex === this.filteredModels.length - 1 ? 0 : this.selectedIndex + 1;
+			if (this.filteredModels.length === 0 && minIndex === 0) return;
+			this.selectedIndex = this.selectedIndex === maxIndex ? minIndex : this.selectedIndex + 1;
 			this.updateList();
 		}
 		// Enter
 		else if (kb.matches(keyData, "tui.select.confirm")) {
+			if (this.selectedIndex < 0) {
+				this.dispose();
+				this.onSelectReset?.();
+				return;
+			}
 			const selectedModel = this.filteredModels[this.selectedIndex];
 			if (selectedModel) {
 				this.handleSelect(selectedModel.model);
@@ -441,6 +501,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		}
 		// Select and save as default
 		else if (kb.matches(keyData, "app.models.save") && this.onSelectAsDefaultCallback) {
+			if (this.selectedIndex < 0) return;
 			const selectedModel = this.filteredModels[this.selectedIndex];
 			if (selectedModel) {
 				this.dispose();
