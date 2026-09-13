@@ -70,11 +70,12 @@ describe("AssistantMessageComponent", () => {
 		);
 		const rendered = component.render(80).join("\n");
 
-		expect(rendered).toContain("Thinking...");
+		expect(rendered).not.toContain("Thinking...");
+		expect(rendered).not.toContain("private reasoning");
 		expect(rendered).toContain("Response was truncated before completion.");
 	});
 
-	test("coalesces adjacent thinking blocks into one hidden thinking label", () => {
+	test("coalesces adjacent thinking blocks and hides them without a label", () => {
 		initTheme("dark");
 
 		const component = new AssistantMessageComponent(
@@ -88,7 +89,9 @@ describe("AssistantMessageComponent", () => {
 		);
 		const rendered = stripAnsi(component.render(80).join("\n"));
 
-		expect(rendered.match(/Thinking\.\.\./g)).toHaveLength(1);
+		expect(rendered).not.toContain("Thinking...");
+		expect(rendered).not.toContain("first thought");
+		expect(rendered).not.toContain("second thought");
 		expect(rendered).toContain("answer");
 	});
 

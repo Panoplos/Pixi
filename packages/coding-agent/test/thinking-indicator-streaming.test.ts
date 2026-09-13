@@ -49,7 +49,7 @@ function makeCtx(): Ctx {
 		thinkingStartMs: undefined,
 		thinkingStreamActive: false,
 		outputPad: 1,
-		hiddenThinkingLabel: "Thinking...",
+		hiddenThinkingLabel: "Thinking",
 		statusContainer: new Container(),
 		activeStatusIndicator: undefined,
 		workingVisible: true,
@@ -99,7 +99,8 @@ describe("thinking indicator streaming", () => {
 
 		await handleEvent.call(ctx, ev({ type: "thinking_start", contentIndex: 0, partial: {} as never }));
 		expect(render(ctx.chatContainer)).not.toContain("Thinking...");
-		expect(render(ctx.statusContainer)).toContain("◐ Thinking...");
+		expect(render(ctx.statusContainer)).toContain("◐ Thinking");
+		expect(render(ctx.statusContainer)).not.toContain("Thinking...");
 
 		await handleEvent.call(ctx, ev({ type: "thinking_end", contentIndex: 0, content: "hmm", partial: {} as never }));
 		expect(render(ctx.chatContainer)).toContain("Thought for");
@@ -113,7 +114,8 @@ describe("thinking indicator streaming", () => {
 		ctx.streamingComponent = { updateContent: vi.fn() };
 
 		await handleEvent.call(ctx, ev({ type: "thinking_start", contentIndex: 0, partial: {} as never }));
-		expect(render(ctx.statusContainer)).toContain("Thinking...");
+		expect(render(ctx.statusContainer)).toContain("◐ Thinking");
+		expect(render(ctx.statusContainer)).not.toContain("Thinking...");
 
 		await handleEvent.call(
 			ctx,

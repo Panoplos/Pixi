@@ -424,7 +424,9 @@ export class InteractiveMode {
 	private workingIndicatorOptions: WorkingIndicatorOptions | undefined = undefined;
 	private thinkingIndicatorOptions: WorkingIndicatorOptions | undefined = undefined;
 	private readonly defaultWorkingMessage = "Working";
-	private readonly defaultHiddenThinkingLabel = "Thinking...";
+	// Message for the thinking status indicator; also the label of a thinking
+	// run that was collapsed by clicking it in the chat.
+	private readonly defaultHiddenThinkingLabel = "Thinking";
 	private hiddenThinkingLabel = this.defaultHiddenThinkingLabel;
 
 	private lastSigintTime = 0;

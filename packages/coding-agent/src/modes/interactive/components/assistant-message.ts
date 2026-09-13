@@ -95,9 +95,15 @@ export class AssistantMessageComponent extends Container {
 		// Clear content container
 		this.contentContainer.clear();
 
-		const hasVisibleContent = message.content.some(
-			(c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()),
-		);
+		// Thinking runs hidden by the global setting render nothing at all, so
+		// they must not trigger the leading spacer either.
+		let previewRunIndex = 0;
+		const hasVisibleContent = message.content.some((c) => {
+			if (c.type === "text" && c.text.trim()) return true;
+			if (c.type !== "thinking" || !c.thinking.trim()) return false;
+			const runIndex = previewRunIndex++;
+			return (this.thinkingVisibilityOverrides.get(runIndex) ?? this.hideThinkingBlock) === false;
+		});
 
 		if (hasVisibleContent) {
 			this.contentContainer.addChild(new Spacer(1));
@@ -140,7 +146,14 @@ export class AssistantMessageComponent extends Container {
 					.some((c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()));
 
 				const runIndex = thinkingRunIndex++;
-				const hidden = this.thinkingVisibilityOverrides.get(runIndex) ?? this.hideThinkingBlock;
+				const explicitlyCollapsed = this.thinkingVisibilityOverrides.get(runIndex);
+				const hidden = explicitlyCollapsed ?? this.hideThinkingBlock;
+				// A globally hidden thinking block renders no output: the interactive
+				// mode shows the transient "Thinking" status while streaming and
+				// appends a "Thought for Xs" line once the run finishes. A run that
+				// was collapsed by clicking keeps its clickable label so it can be
+				// expanded again.
+				if (hidden && explicitlyCollapsed === undefined) continue;
 				const thinkingComponent = hidden
 					? new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0)
 					: new Markdown(
