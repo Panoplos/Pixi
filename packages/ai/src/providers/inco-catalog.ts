@@ -23,6 +23,11 @@ function round4(value: number): number {
 	return Math.round(value * 10_000) / 10_000;
 }
 
+/** Strip serving-tier suffixes (":fast") so tier ids resolve to the seeded base model. */
+function baseModelId(id: string): string {
+	return id.split(":")[0] ?? id;
+}
+
 function displayName(id: string): string {
 	const base = id.split(":")[0] ?? id;
 	return base
@@ -117,10 +122,12 @@ function parseIncoChatModel(
 	known: Map<string, Model<"openai-completions">>,
 ): Model<"openai-completions"> | undefined {
 	if (!isRecord(raw) || typeof raw.id !== "string" || raw.id.length === 0) return undefined;
-	const knownModel = known.get(raw.id);
+	// Tier suffixes (e.g. "glm-5.3-flash:fast") are the same underlying model as the
+	// seeded base id, and the live catalog exposes no metadata to override it with.
+	const knownModel = known.get(raw.id) ?? known.get(baseModelId(raw.id));
 	if (knownModel) {
 		const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : knownModel.name;
-		return { ...knownModel, name };
+		return { ...knownModel, id: raw.id, name };
 	}
 
 	const metadata = isRecord(raw.metadata) ? raw.metadata : raw;

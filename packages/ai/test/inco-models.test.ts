@@ -65,6 +65,23 @@ describe("Inco catalog", () => {
 		});
 	});
 
+	// Regression: live ids with serving-tier suffixes must inherit seed metadata
+	// (130k context windows from the 128k unknown-model default confuse the context gauge).
+	it("maps tier-suffixed live ids to seed metadata", () => {
+		const models = parseIncoChatModels({
+			data: [
+				{ id: "glm-5.3-flash:fast" },
+				{ id: "kimi-k3:fast" },
+				{ id: "unknown-model:fast", metadata: { context_length: 262_144 } },
+			],
+		});
+		expect(models.map((model) => ({ id: model.id, contextWindow: model.contextWindow }))).toEqual([
+			{ id: "glm-5.3-flash:fast", contextWindow: 1_000_000 },
+			{ id: "kimi-k3:fast", contextWindow: 1_048_576 },
+			{ id: "unknown-model:fast", contextWindow: 262_144 },
+		]);
+	});
+
 	it("returns the seed catalog when no API key is provided", async () => {
 		const fetchSpy = vi.spyOn(globalThis, "fetch");
 		const models = await fetchIncoChatModels();
