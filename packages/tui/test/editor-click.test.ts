@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { test } from "node:test";
 import { Editor } from "../src/components/editor.ts";
-import { Container } from "../src/tui.ts";
+import { Container, CURSOR_MARKER } from "../src/tui.ts";
 import { TuiAltScreen } from "../src/tui-alt-screen.ts";
 import { defaultEditorTheme } from "./test-themes.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
@@ -121,21 +121,38 @@ test("deleting a selected paste marker removes its registry entry", async () => 
 	tui.stop();
 });
 
-test("block cursor parks on the last selected grapheme while a selection exists", async () => {
+test("owned selection highlight stops at the editor's text instead of the row edge", async () => {
+	const { terminal, tui } = await createEditor("one\ntwo");
+	drag(terminal, 7, 2, 7, 3);
+	await terminal.waitForRender();
+	// Screen row 1 renders "one", row 2 "two"; text starts at cell 4
+	// (padding 2 + prefix 2). The highlight covers only the selected cells and
+	// must not spill over the editor's padding to the screen edge.
+	assert.deepStrictEqual(terminal.getInverseColumnRanges(1), [{ start: 6, end: 7 }]);
+	assert.deepStrictEqual(terminal.getInverseColumnRanges(2), [{ start: 4, end: 7 }]);
+	tui.stop();
+});
+
+test("selection carries the cursor visuals: no reverse block while held", async () => {
 	const { terminal, tui, editor } = await createEditor("hello 🙂 world");
-	// Drag over "world": the caret state stays at the insertion point after
-	// it, but the rendered block replaces the last selected character.
+	// Drag over "world": the selection itself marks the held range, so the
+	// editor emits only the zero-width hardware-cursor marker and no reverse
+	// block inside the highlighted cells.
 	drag(terminal, 5, 3, 9, 3);
 	const rows = editor.render(16);
 	assert.ok(
-		rows.some((row) => row.includes("\x1b[7md\x1b[0m")),
-		`block cursor should replace the last selected char: ${JSON.stringify(rows)}`,
+		rows.some((row) => row.includes(CURSOR_MARKER)),
+		`hardware cursor marker should still be emitted: ${JSON.stringify(rows)}`,
+	);
+	assert.ok(
+		!rows.some((row) => row.includes("\x1b[7md\x1b[0m") || row.includes("\x1b[7m \x1b[0m")),
+		`no reverse cursor block while a selection is held: ${JSON.stringify(rows)}`,
 	);
 	editor.clearSelection();
 	const cleared = editor.render(16);
 	assert.ok(
-		!cleared.some((row) => row.includes("\x1b[7md\x1b[0m")) && cleared.some((row) => row.includes("\x1b[7m \x1b[0m")),
-		`block cursor should return to the insertion point after the selection clears: ${JSON.stringify(cleared)}`,
+		cleared.some((row) => row.includes("\x1b[7m \x1b[0m")),
+		`block cursor returns to the insertion point after the selection clears: ${JSON.stringify(cleared)}`,
 	);
 	tui.stop();
 });

@@ -250,6 +250,9 @@ interface LayoutLine {
 	text: string;
 	hasCursor: boolean;
 	cursorPos?: number;
+	/** Logical line and code-unit window this layout row renders. */
+	logicalLine?: number;
+	startCol?: number;
 }
 
 export interface EditorTheme {
@@ -322,6 +325,7 @@ export class Editor implements Component, Focusable {
 
 	// Store last render geometry for cursor navigation and mouse hit-testing.
 	private lastWidth: number = 80;
+	private lastRenderWidth: number = 80;
 	private renderedVisibleLineCount = 1;
 	private renderedAutocompleteHeight = 0;
 
@@ -548,6 +552,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	render(width: number): string[] {
+		this.lastRenderWidth = width;
 		const maxPadding = Math.max(0, Math.floor((width - 1) / 2));
 		const paddingX = Math.min(this.paddingX, maxPadding);
 		const contentWidth = Math.max(1, width - paddingX * 2);
@@ -627,7 +632,14 @@ export class Editor implements Component, Focusable {
 				// Hardware cursor marker (zero-width, emitted before fake cursor for IME positioning)
 				const marker = emitCursorMarker ? CURSOR_MARKER : "";
 
-				if (after.length > 0) {
+				// While a selection is held the screen inverts exactly the selected
+				// cells, which already marks the cursor position (the caret anchors
+				// the selection's end). Our own reverse block would then sit inside
+				// the highlighted slice and its escape codes corrupt the highlight
+				// so it leaks across the rest of the row — emit only the marker.
+				if (this.selection) {
+					displayText = before + marker + after;
+				} else if (after.length > 0) {
 					// Cursor is on a character (grapheme) - replace it with highlighted version
 					// Get the first grapheme from 'after'
 					const afterGraphemes = [...this.segment(after, "grapheme")];
@@ -790,28 +802,51 @@ export class Editor implements Component, Focusable {
 		return true;
 	}
 
-	/**
-	 * Step a position back over the grapheme that ends at `position`; a position
-	 * at a line start steps back over the previous line's newline.
-	 */
-	private backUpOneGrapheme(position: { line: number; col: number }): { line: number; col: number } {
-		if (position.col <= 0) {
-			return position.line === 0
-				? position
-				: { line: position.line - 1, col: (this.state.lines[position.line - 1] ?? "").length };
-		}
-		const line = this.state.lines[position.line] ?? "";
-		let previous = 0;
-		for (const segment of this.segment(line.slice(0, position.col), "grapheme")) {
-			const next = segment.index + segment.segment.length;
-			if (next >= position.col) return { line: position.line, col: segment.index };
-			previous = next;
-		}
-		return { line: position.line, col: previous };
-	}
-
 	clearSelection(): void {
 		this.selection = undefined;
+	}
+
+	/**
+	 * Selected columns of each visible text row while this editor owns the
+	 * screen selection. Rows use the local grid of `handleSelection` (the
+	 * first text row is 1); columns count cells from the editor's left edge
+	 * including padding and the prefix, ending at the row's text so padding is
+	 * never highlighted.
+	 */
+	getComponentSelectionRows(): Array<{ row: number; start: number; end: number }> {
+		if (!this.selection) return [];
+		let first = this.selection.start;
+		let second = this.selection.end;
+		if (first.line > second.line || (first.line === second.line && first.col > second.col)) {
+			const swap = first;
+			first = second;
+			second = swap;
+		}
+		const maxPadding = Math.max(0, Math.floor((this.lastRenderWidth - 1) / 2));
+		const paddingX = Math.min(this.paddingX, maxPadding);
+		const prefixWidth = this.prefix ? visibleWidth(this.prefix) : 0;
+		const textStartX = paddingX + prefixWidth;
+		const layoutLines = this.layoutText(this.lastWidth);
+		const rows: Array<{ row: number; start: number; end: number }> = [];
+		for (let i = 0; i < this.renderedVisibleLineCount; i++) {
+			const layoutLine = layoutLines[this.scrollOffset + i];
+			const logicalLine = layoutLine?.logicalLine;
+			if (!layoutLine || logicalLine === undefined) continue;
+			if (logicalLine < first.line || logicalLine > second.line) continue;
+			const windowStart = layoutLine.startCol ?? 0;
+			const rowFirst = logicalLine === first.line ? Math.max(first.col, windowStart) : windowStart;
+			const rowLast =
+				logicalLine === second.line
+					? Math.min(second.col, windowStart + layoutLine.text.length)
+					: windowStart + layoutLine.text.length;
+			if (rowLast <= rowFirst) continue;
+			const cellAt = (col: number): number =>
+				textStartX + visibleWidth(layoutLine.text.slice(0, Math.max(0, Math.min(col, layoutLine.text.length))));
+			const startCell = cellAt(rowFirst - windowStart);
+			const endCell = cellAt(rowLast - windowStart);
+			if (endCell > startCell) rows.push({ row: i + 1, start: startCell, end: endCell });
+		}
+		return rows;
 	}
 
 	private deleteSelection(): void {
@@ -1191,13 +1226,6 @@ export class Editor implements Component, Focusable {
 	private layoutText(contentWidth: number): LayoutLine[] {
 		const layoutLines: LayoutLine[] = [];
 
-		// While a selection exists the caret state stays at the insertion point
-		// after the selection, but the visible block cursor parks on the last
-		// selected grapheme, the way a click places it on a grapheme.
-		const renderCursor = this.selection
-			? this.backUpOneGrapheme(this.selection.end)
-			: { line: this.state.cursorLine, col: this.state.cursorCol };
-
 		if (this.state.lines.length === 0 || (this.state.lines.length === 1 && this.state.lines[0] === "")) {
 			// Empty editor
 			layoutLines.push({
@@ -1211,7 +1239,7 @@ export class Editor implements Component, Focusable {
 		// Process each logical line
 		for (let i = 0; i < this.state.lines.length; i++) {
 			const line = this.state.lines[i] || "";
-			const isCurrentLine = i === renderCursor.line;
+			const isCurrentLine = i === this.state.cursorLine;
 			const lineVisibleWidth = visibleWidth(line);
 
 			if (lineVisibleWidth <= contentWidth) {
@@ -1220,12 +1248,16 @@ export class Editor implements Component, Focusable {
 					layoutLines.push({
 						text: line,
 						hasCursor: true,
-						cursorPos: renderCursor.col,
+						cursorPos: this.state.cursorCol,
+						logicalLine: i,
+						startCol: 0,
 					});
 				} else {
 					layoutLines.push({
 						text: line,
 						hasCursor: false,
+						logicalLine: i,
+						startCol: 0,
 					});
 				}
 			} else {
@@ -1236,7 +1268,7 @@ export class Editor implements Component, Focusable {
 					const chunk = chunks[chunkIndex];
 					if (!chunk) continue;
 
-					const cursorPos = renderCursor.col;
+					const cursorPos = this.state.cursorCol;
 					const isLastChunk = chunkIndex === chunks.length - 1;
 
 					// Determine if cursor is in this chunk
@@ -1269,11 +1301,15 @@ export class Editor implements Component, Focusable {
 							text: chunk.text,
 							hasCursor: true,
 							cursorPos: adjustedCursorPos,
+							logicalLine: i,
+							startCol: chunk.startIndex,
 						});
 					} else {
 						layoutLines.push({
 							text: chunk.text,
 							hasCursor: false,
+							logicalLine: i,
+							startCol: chunk.startIndex,
 						});
 					}
 				}

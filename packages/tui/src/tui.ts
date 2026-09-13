@@ -140,6 +140,17 @@ export interface Component {
 	clearSelection?(): void;
 
 	/**
+	 * Exact selected ranges of this component's rows while it owns the screen
+	 * selection. `row` counts from the component's first rendered line using
+	 * the same grid the screen translates into local `y` for `handleSelection`
+	 * (the editor's first text row is row 1); `start`/`end` are cell columns
+	 * from the component's left edge, including its own padding. The screen
+	 * paints only these ranges, so highlight stops at the component's text
+	 * instead of spilling over its padding to the row edges.
+	 */
+	getComponentSelectionRows?(): Array<{ row: number; start: number; end: number }>;
+
+	/**
 	 * If true, component receives key release events (Kitty protocol).
 	 * Default is false - release events are filtered out.
 	 */

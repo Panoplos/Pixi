@@ -1724,6 +1724,23 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 				},
 			};
 		}
+		// A component that owns the selection (e.g. the editor) reports the exact
+		// selected columns of its own rows; paint from that report so highlight
+		// hugs the component's text instead of spilling over its padded rows.
+		const ownerRows = this.componentSelectionOwner?.getComponentSelectionRows?.();
+		let ownedColumns: Map<number, { start: number; end: number }> | undefined;
+		if (ownerRows && ownerRows.length > 0 && layout) {
+			const ownerGeometry = this.findComponentGeometry(this.componentSelectionOwner!);
+			if (ownerGeometry) {
+				ownedColumns = new Map();
+				for (const ownerRow of ownerRows) {
+					ownedColumns.set(ownerGeometry.y + ownerRow.row, {
+						start: ownerGeometry.x + ownerRow.start,
+						end: ownerGeometry.x + ownerRow.end,
+					});
+				}
+			}
+		}
 		return screen.map((line, row) => {
 			if (
 				row < minRow ||
@@ -1735,7 +1752,13 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 				return line;
 			}
 			const lineWidth = visibleWidth(line);
-			const columns = this.getSelectionColumns(line, row, screenSelection, minColumn, maxColumn);
+			const owned = ownedColumns?.get(row);
+			const columns = owned
+				? {
+						start: Math.max(minColumn, owned.start),
+						end: Math.min(maxColumn, Math.min(lineWidth, owned.end)),
+					}
+				: this.getSelectionColumns(line, row, screenSelection, minColumn, maxColumn);
 			if (columns.end <= columns.start) return line;
 			const before = sliceByColumn(line, 0, columns.start, true);
 			const selected = sliceByColumn(line, columns.start, columns.end - columns.start, true);

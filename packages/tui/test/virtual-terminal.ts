@@ -144,6 +144,33 @@ export class VirtualTerminal implements Terminal {
 	}
 
 	/**
+	 * Ranges of inverse-video cells on one viewport row (row is 0-based within
+	 * the visible viewport). Exposes cell attributes for styling assertions,
+	 * e.g. the screen's selection highlight.
+	 */
+	getInverseColumnRanges(row: number): Array<{ start: number; end: number }> {
+		const buffer = this.xterm.buffer.active;
+		const line = buffer.getLine(buffer.viewportY + row);
+		if (!line) return [];
+		const ranges: Array<{ start: number; end: number }> = [];
+		let current: { start: number; end: number } | undefined;
+		for (let col = 0; col < this._columns; col++) {
+			const cell = line.getCell(col);
+			if (cell?.isInverse()) {
+				if (!current) {
+					current = { start: col, end: col + 1 };
+					ranges.push(current);
+				} else {
+					current.end = col + 1;
+				}
+			} else {
+				current = undefined;
+			}
+		}
+		return ranges;
+	}
+
+	/**
 	 * Get the visible viewport (what's currently on screen)
 	 * Note: You should use getViewportAfterWrite() for testing after writing data
 	 */
