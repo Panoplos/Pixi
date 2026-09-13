@@ -258,6 +258,8 @@ interface LayoutLine {
 export interface EditorTheme {
 	borderColor: (str: string) => string;
 	prefixColor?: (str: string) => string;
+	/** Styling for the inline ghost suggestion rendered after the cursor. */
+	ghost?: (str: string) => string;
 	selectList: SelectListTheme;
 }
 
@@ -274,6 +276,9 @@ const SLASH_COMMAND_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 };
 
 const ATTACHMENT_AUTOCOMPLETE_DEBOUNCE_MS = 20;
+
+/** How fast the ghost suggestion streams into the text once Tab accepts it. */
+const GHOST_FILL_INTERVAL_MS = 8;
 const DEFAULT_AUTOCOMPLETE_TRIGGER_CHARACTERS = ["@", "#"];
 
 function escapeCharacterClass(value: string): string {
@@ -377,6 +382,13 @@ export class Editor implements Component, Focusable {
 	// Text selected by a drag inside the editor. Typing replaces it, backspace and
 	// delete remove it. Cleared on blur and on any non-editing key.
 	private selection?: { start: { line: number; col: number }; end: { line: number; col: number } };
+
+	// Ghost suggestion: a muted hint rendered after the cursor while the editor is
+	// empty. Tab streams it into the text left to right; any user keypress keeps
+	// the already-typed portion and discards the rest.
+	private ghostText?: string;
+	private ghostRemaining: string[] = [];
+	private ghostFillTimer?: ReturnType<typeof setTimeout>;
 
 	// Preferred visual column for vertical cursor movement (sticky column)
 	private preferredVisualCol: number | null = null;
@@ -487,6 +499,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private navigateHistory(direction: 1 | -1): void {
+		this.clearGhost();
 		this.lastAction = null;
 		if (this.history.length === 0) return;
 
@@ -653,6 +666,15 @@ export class Editor implements Component, Focusable {
 					const cursor = "\x1b[7m \x1b[0m";
 					displayText = before + marker + cursor;
 					lineVisibleWidth = lineVisibleWidth + 1;
+					// Ghost suggestion trails the cursor as muted text while the
+					// editor is empty; this renders live during the Tab fill.
+					if (this.ghostText && this.isEditorEmpty()) {
+						const preview = this.ghostPreview(contentWidth - prefixVisibleWidth - lineVisibleWidth);
+						if (preview) {
+							displayText += this.theme.ghost ? this.theme.ghost(preview) : preview;
+							lineVisibleWidth += visibleWidth(preview);
+						}
+					}
 					// If cursor overflows content width into the padding, flag it
 					if (lineVisibleWidth > contentWidth && paddingX > 0) {
 						cursorInPadding = true;
@@ -1043,9 +1065,16 @@ export class Editor implements Component, Focusable {
 			}
 		}
 
-		// Tab - trigger completion
+		// Tab streams the ghost suggestion into the input instead of triggering
+		// completion while it is pending (or already filling).
 		if (kb.matches(data, "tui.input.tab") && !this.autocompleteState) {
-			this.handleTabCompletion();
+			if (this.ghostFillTimer) {
+				this.completeGhostFill();
+			} else if (this.ghostText && this.isEditorEmpty()) {
+				this.startGhostFill();
+			} else {
+				this.handleTabCompletion();
+			}
 			return;
 		}
 
@@ -1211,8 +1240,16 @@ export class Editor implements Component, Focusable {
 			return;
 		}
 
+		if (this.ghostFillTimer && !kb.matches(data, "tui.input.tab")) {
+			// A key during the ghost fill means the user takes over: keep the
+			// already-typed portion, drop the rest, then handle the key normally.
+			this.clearGhost();
+		}
+
 		const printable = decodePrintableKey(data);
 		if (printable !== undefined) {
+			// Typing supersedes a pending suggestion.
+			this.clearGhost();
 			this.insertCharacter(printable);
 			return;
 		}
@@ -1317,6 +1354,95 @@ export class Editor implements Component, Focusable {
 		}
 
 		return layoutLines;
+	}
+
+	/** Show (or hide) the ghost suggestion rendered after the cursor. */
+	setGhostSuggestion(text: string | undefined): void {
+		this.clearGhost();
+		if (text) {
+			this.ghostText = text;
+			this.ghostRemaining = [...this.segment(text, "grapheme")].map((g) => g.segment);
+			this.tui.requestRender();
+		}
+	}
+
+	/** Remove the ghost suggestion; typed or filled text is unaffected. */
+	clearGhostSuggestion(): void {
+		this.setGhostSuggestion(undefined);
+	}
+
+	getGhostSuggestion(): string | undefined {
+		return this.ghostText;
+	}
+
+	private clearGhost(): void {
+		this.stopGhostFill();
+		this.ghostText = undefined;
+		this.ghostRemaining = [];
+	}
+
+	private stopGhostFill(): void {
+		if (this.ghostFillTimer !== undefined) {
+			clearTimeout(this.ghostFillTimer);
+			this.ghostFillTimer = undefined;
+		}
+	}
+
+	/** Start streaming the ghost suggestion into the text, one grapheme per tick. */
+	private startGhostFill(): void {
+		this.pushUndoSnapshot();
+		this.lastAction = null;
+		this.tui.requestRender();
+		this.ghostFillTimer = setTimeout(() => this.ghostFillTick(), GHOST_FILL_INTERVAL_MS);
+	}
+
+	private ghostFillTick(): void {
+		this.ghostFillTimer = undefined;
+		if (!this.ghostText || this.ghostRemaining.length === 0) {
+			this.clearGhost();
+			return;
+		}
+		this.appendGhostGrapheme(this.ghostRemaining.shift()!);
+		this.tui.requestRender();
+		if (this.ghostRemaining.length > 0) {
+			this.ghostFillTimer = setTimeout(() => this.ghostFillTick(), GHOST_FILL_INTERVAL_MS);
+		} else {
+			// Fully consumed - the suggestion is now ordinary text.
+			this.clearGhost();
+		}
+	}
+
+	/** Complete the fill immediately (Tab pressed again mid-fill). */
+	private completeGhostFill(): void {
+		if (!this.ghostText) return;
+		this.stopGhostFill();
+		while (this.ghostRemaining.length > 0) {
+			this.appendGhostGrapheme(this.ghostRemaining.shift()!);
+		}
+		this.clearGhost();
+		this.onChange?.(this.getText());
+		this.tui.requestRender();
+	}
+
+	private appendGhostGrapheme(grapheme: string): void {
+		const line = this.state.lines[this.state.cursorLine] || "";
+		this.state.lines[this.state.cursorLine] = line + grapheme;
+		this.state.cursorCol = this.state.cursorCol + grapheme.length;
+		this.onChange?.(this.getText());
+	}
+
+	/** As much unfilled ghost text as fits in the given column budget. */
+	private ghostPreview(budget: number): string {
+		if (budget <= 0) return "";
+		let text = "";
+		let width = 0;
+		for (const grapheme of this.ghostRemaining) {
+			const graphemeWidth = visibleWidth(grapheme);
+			if (width + graphemeWidth > budget) break;
+			text += grapheme;
+			width += graphemeWidth;
+		}
+		return text;
 	}
 
 	getText(): string {
@@ -1506,6 +1632,10 @@ export class Editor implements Component, Focusable {
 
 	// All the editor methods from before...
 	private insertCharacter(char: string, skipUndoCoalescing?: boolean): void {
+		if (this.ghostText) {
+			// User input supersedes the suggestion.
+			this.clearGhost();
+		}
 		this.exitHistoryBrowsing();
 
 		// Undo coalescing (fish-style):
@@ -1566,6 +1696,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private handlePaste(pastedText: string): void {
+		this.clearGhost();
 		this.cancelAutocomplete();
 		this.exitHistoryBrowsing();
 		this.lastAction = null;

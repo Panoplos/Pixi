@@ -87,4 +87,17 @@ export interface EditorComponent extends Component {
 
 	/** Set max visible items in autocomplete dropdown */
 	setAutocompleteMaxVisible?(maxVisible: number): void;
+
+	// =========================================================================
+	// Next-prompt suggestion support (optional)
+	// =========================================================================
+
+	/** Show (or hide) a suggested next message as muted ghost text after the cursor. */
+	setGhostSuggestion?(text: string | undefined): void;
+
+	/** Remove the ghost suggestion; typed or filled text is untouched. */
+	clearGhostSuggestion?(): void;
+
+	/** Current ghost suggestion, if any. */
+	getGhostSuggestion?(): string | undefined;
 }
