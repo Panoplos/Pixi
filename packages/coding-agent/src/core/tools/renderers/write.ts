@@ -161,9 +161,19 @@ export const writeRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "rend
 		const component =
 			(context.lastComponent as WriteCallRenderComponent | undefined) ?? new WriteCallRenderComponent();
 		if (fileContent !== null) {
-			component.cache = context.argsComplete
-				? rebuildWriteHighlightCacheFull(rawPath, fileContent)
-				: updateWriteHighlightCacheIncremental(component.cache, rawPath, fileContent);
+			// Only rebuild when the streamed args actually changed: once complete
+			// the cache is final, and re-highlighting the whole file on every
+			// otherwise-unchanged render (e.g. each keystroke elsewhere on screen)
+			// dominates the cost of keeping a write block in view.
+			const cacheMatches =
+				component.cache !== undefined &&
+				component.cache.rawPath === rawPath &&
+				component.cache.rawContent === fileContent;
+			if (!cacheMatches) {
+				component.cache = context.argsComplete
+					? rebuildWriteHighlightCacheFull(rawPath, fileContent)
+					: updateWriteHighlightCacheIncremental(component.cache, rawPath, fileContent);
+			}
 		} else {
 			component.cache = undefined;
 		}
