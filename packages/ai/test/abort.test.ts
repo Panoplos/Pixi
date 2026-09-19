@@ -201,6 +201,18 @@ describe("AI Providers Abort Tests", () => {
 		});
 	});
 
+	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer Provider Abort", () => {
+		const llm = getModel("bitdeer", "deepseek-ai/DeepSeek-V4.1-Flash");
+
+		it("should abort mid-stream", { retry: 3 }, async () => {
+			await testAbortSignal(llm, { reasoningEffort: "high" });
+		});
+
+		it("should handle immediate abort", { retry: 3 }, async () => {
+			await testImmediateAbort(llm, { reasoningEffort: "high" });
+		});
+	});
+
 	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider Abort", () => {
 		const llm = getModel("inco", "deepseek-v4.1-flash:fast");
 

@@ -359,6 +359,17 @@ describe("Context overflow error handling", () => {
 		}, 120000);
 	});
 
+	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer", () => {
+		it("Flash - should detect overflow via isContextOverflow", async () => {
+			const model = getModel("bitdeer", "deepseek-ai/DeepSeek-V4.1-Flash");
+			const result = await testContextOverflow(model, process.env.BITDEER_API_KEY!);
+			logResult(result);
+
+			expect(result.stopReason).toBe("error");
+			expect(isContextOverflow(result.response, model.contextWindow)).toBe(true);
+		}, 120000);
+	});
+
 	describe.skipIf(!process.env.INCO_API_KEY)("Inco", () => {
 		it("Flash - should detect overflow via isContextOverflow", async () => {
 			const model = getModel("inco", "deepseek-v4.1-flash:fast");

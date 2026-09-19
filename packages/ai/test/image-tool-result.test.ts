@@ -324,6 +324,19 @@ describe("Tool Results with Images", () => {
 		});
 	});
 
+	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer Provider", () => {
+		const llm = getModel("bitdeer", "zai-org/GLM-5.3-Flash");
+		const options = { reasoningEffort: "high" } satisfies StreamOptionsWithExtras;
+
+		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
+			await handleToolWithImageResult(llm, options);
+		});
+
+		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
+			await handleToolWithTextAndImageResult(llm, options);
+		});
+	});
+
 	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider", () => {
 		const llm = getModel("inco", "glm-5.3-flash");
 		const options = { reasoningEffort: "high" } satisfies StreamOptionsWithExtras;

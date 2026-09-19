@@ -29,6 +29,7 @@ export const defaultModelPerProvider: Record<KnownProvider, string> = {
 	deepseek: "deepseek-v4-pro",
 	deepinfra: "deepseek-ai/DeepSeek-V4-Flash-0731",
 	inco: "deepseek-v4.1-flash:fast",
+	bitdeer: "zai-org/GLM-5.3-Flash",
 	google: "gemini-3.1-pro-preview",
 	"google-vertex": "gemini-3.1-pro-preview",
 	"github-copilot": "gpt-5.4",

@@ -13,6 +13,7 @@ import {
 	CLOUDFLARE_AI_GATEWAY_OPENAI_BASE_URL,
 	CLOUDFLARE_WORKERS_AI_BASE_URL,
 } from "../src/api/cloudflare.ts";
+import { fetchBitdeerChatModels } from "../src/providers/bitdeer-catalog.ts";
 import { fetchDeepInfraChatModels } from "../src/providers/deepinfra-catalog.ts";
 import { fetchIncoChatModels } from "../src/providers/inco-catalog.ts";
 import type {
@@ -1155,6 +1156,20 @@ async function fetchDeepInfraModels(): Promise<Model<any>[]> {
 		console.error("Failed to fetch DeepInfra models:", error);
 		if (generatorOptions.strict) throw error;
 		return [];
+	}
+}
+
+async function fetchBitdeerModels(): Promise<Model<any>[]> {
+	try {
+		const apiKey = process.env.BITDEER_API_KEY;
+		if (apiKey) console.log("Fetching models from Bitdeer API...");
+		const models = await fetchBitdeerChatModels({ apiKey });
+		console.log(`Loaded ${models.length} chat models from Bitdeer`);
+		return models;
+	} catch (error) {
+		console.error("Failed to fetch Bitdeer models:", error);
+		if (generatorOptions.strict && process.env.BITDEER_API_KEY) throw error;
+		return fetchBitdeerChatModels();
 	}
 }
 
@@ -2509,6 +2524,7 @@ async function generateModels() {
 	// AI Gateway: OpenAI-compatible catalog with tool-capable models
 	const modelsDevModels = await loadModelsDevData();
 	const deepInfraModels = await fetchDeepInfraModels();
+	const bitdeerModels = await fetchBitdeerModels();
 	const incoModels = await fetchIncoModels();
 	const openRouterModels = await fetchOpenRouterModels();
 	const aiGatewayModels = await fetchAiGatewayModels();
@@ -2519,6 +2535,7 @@ async function generateModels() {
 		...openRouterModels,
 		...aiGatewayModels,
 		...deepInfraModels,
+		...bitdeerModels,
 		...incoModels,
 	].filter(
 		(model) =>

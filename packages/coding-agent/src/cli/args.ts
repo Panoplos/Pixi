@@ -398,6 +398,7 @@ ${chalk.bold("Environment Variables:")}
   DEEPSEEK_API_KEY                 - DeepSeek API key
   DEEPINFRA_API_KEY                - DeepInfra API key
   INCO_API_KEY                     - Inco API key
+  BITDEER_API_KEY                  - Bitdeer AI API key
   NVIDIA_API_KEY                   - NVIDIA NIM API key
   GEMINI_API_KEY                   - Google Gemini API key
   GROQ_API_KEY                     - Groq API key

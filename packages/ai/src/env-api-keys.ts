@@ -87,6 +87,7 @@ function getApiKeyEnvVars(provider: string): readonly string[] | undefined {
 		deepseek: "DEEPSEEK_API_KEY",
 		deepinfra: "DEEPINFRA_API_KEY",
 		inco: "INCO_API_KEY",
+		bitdeer: "BITDEER_API_KEY",
 		google: "GEMINI_API_KEY",
 		"google-vertex": "GOOGLE_CLOUD_API_KEY",
 		groq: "GROQ_API_KEY",

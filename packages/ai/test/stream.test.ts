@@ -767,6 +767,18 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
+	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer Provider", () => {
+		const llm = getModel("bitdeer", "deepseek-ai/DeepSeek-V4.1-Flash");
+
+		it("should complete basic text generation", { retry: 3 }, async () => {
+			await basicTextGeneration(llm);
+		});
+
+		it("should handle tool calling with thinking", { retry: 3 }, async () => {
+			await handleToolCall(llm, { reasoningEffort: "medium" });
+		});
+	});
+
 	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider", () => {
 		const llm = getModel("inco", "deepseek-v4.1-flash:fast");
 

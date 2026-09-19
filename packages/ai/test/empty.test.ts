@@ -406,6 +406,18 @@ describe("AI Providers Empty Message Tests", () => {
 		});
 	});
 
+	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer Provider Empty Messages", () => {
+		const llm = getModel("bitdeer", "deepseek-ai/DeepSeek-V4.1-Flash");
+
+		it("should handle empty content array", { retry: 3, timeout: 30000 }, async () => {
+			await testEmptyMessage(llm);
+		});
+
+		it("should handle empty string content", { retry: 3, timeout: 30000 }, async () => {
+			await testEmptyStringMessage(llm);
+		});
+	});
+
 	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider Empty Messages", () => {
 		const llm = getModel("inco", "deepseek-v4.1-flash:fast");
 

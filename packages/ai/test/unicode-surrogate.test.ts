@@ -579,6 +579,19 @@ describe("AI Providers Unicode Surrogate Pair Tests", () => {
 		});
 	});
 
+	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer Provider Unicode Handling", () => {
+		const llm = getModel("bitdeer", "deepseek-ai/DeepSeek-V4.1-Flash");
+		const options = { reasoningEffort: "high" } satisfies StreamOptionsWithExtras;
+
+		it("should handle emoji in tool results", { retry: 3, timeout: 30000 }, async () => {
+			await testEmojiInToolResults(llm, options);
+		});
+
+		it("should handle real-world LinkedIn comment data with emoji", { retry: 3, timeout: 30000 }, async () => {
+			await testRealWorldLinkedInData(llm, options);
+		});
+	});
+
 	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider Unicode Handling", () => {
 		const llm = getModel("inco", "deepseek-v4.1-flash:fast");
 		const options = { reasoningEffort: "high" } satisfies StreamOptionsWithExtras;

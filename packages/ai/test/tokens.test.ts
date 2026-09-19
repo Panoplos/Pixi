@@ -201,6 +201,14 @@ describe("Token Statistics on Abort", () => {
 		});
 	});
 
+	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer Provider", () => {
+		const llm = getModel("bitdeer", "deepseek-ai/DeepSeek-V4.1-Flash");
+
+		it("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
+			await testTokensOnAbort(llm);
+		});
+	});
+
 	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider", () => {
 		const llm = getModel("inco", "deepseek-v4.1-flash:fast");
 

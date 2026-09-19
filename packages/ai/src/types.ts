@@ -46,6 +46,7 @@ export type KnownProvider =
 	| "deepseek"
 	| "deepinfra"
 	| "inco"
+	| "bitdeer"
 	| "github-copilot"
 	| "xai"
 	| "groq"
