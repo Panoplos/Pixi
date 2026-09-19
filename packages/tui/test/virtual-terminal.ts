@@ -143,11 +143,6 @@ export class VirtualTerminal implements Terminal {
 		return this.getViewport();
 	}
 
-	/**
-	 * Ranges of inverse-video cells on one viewport row (row is 0-based within
-	 * the visible viewport). Exposes cell attributes for styling assertions,
-	 * e.g. the screen's selection highlight.
-	 */
 	getInverseColumnRanges(row: number): Array<{ start: number; end: number }> {
 		const buffer = this.xterm.buffer.active;
 		const line = buffer.getLine(buffer.viewportY + row);

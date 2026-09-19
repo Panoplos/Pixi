@@ -13,7 +13,6 @@ const editorTheme: EditorTheme = {
 		scrollInfo: (text) => text,
 		noMatch: (text) => text,
 	},
-	// Marker wrapper makes the muted ghost substring easy to assert on.
 	ghost: (text) => `«${text}»`,
 };
 
@@ -45,10 +44,10 @@ describe("Editor ghost suggestion", () => {
 			const { editor } = createEditor();
 			editor.setGhostSuggestion(SUGGESTION);
 
-			editor.handleInput("\x1b[C"); // right arrow starts the fill
+			editor.handleInput("\x1b[C");
 			mock.timers.tick(30);
 			assert.notEqual(editor.getText(), "");
-			editor.handleInput("\x1b[C"); // again mid-fill: completes instantly
+			editor.handleInput("\x1b[C");
 			assert.equal(editor.getText(), SUGGESTION);
 			mock.timers.tick(10_000);
 			assert.equal(editor.getText(), SUGGESTION, "no further growth after completion");
@@ -56,8 +55,8 @@ describe("Editor ghost suggestion", () => {
 			// With the hint pending and no fill running, right arrow starts it too.
 			const editor2 = createEditor().editor;
 			editor2.setGhostSuggestion(SUGGESTION);
-			editor2.handleInput("x"); // typed text hides the hint
-			editor2.handleInput("\x1b[C"); // cursor right with text: normal movement, no fill
+			editor2.handleInput("x");
+			editor2.handleInput("\x1b[C");
 			assert.equal(editor2.getText(), "x");
 		} finally {
 			mock.timers.reset();
@@ -111,7 +110,6 @@ describe("Editor ghost suggestion", () => {
 			assert.ok(seen[seen.length - 1] === SUGGESTION, seen.join(","));
 			assert.equal(editor.getGhostSuggestion(), SUGGESTION, "hint remains pending after the fill");
 
-			// Delete the filled text back to empty: the full hint reappears.
 			for (let i = 0; i < SUGGESTION.length; i++) {
 				editor.handleInput("\x7f");
 			}
@@ -175,7 +173,7 @@ describe("Editor ghost suggestion", () => {
 			drainFill(editor);
 			assert.equal(editor.getText(), SUGGESTION);
 
-			editor.handleInput("\x1f"); // tui.editor.undo (ctrl+-)
+			editor.handleInput("\x1f");
 			assert.equal(editor.getText(), "");
 		} finally {
 			mock.timers.reset();

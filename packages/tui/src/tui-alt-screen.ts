@@ -1724,9 +1724,6 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 				},
 			};
 		}
-		// A component that owns the selection (e.g. the editor) reports the exact
-		// selected columns of its own rows; paint from that report so highlight
-		// hugs the component's text instead of spilling over its padded rows.
 		const ownerRows = this.componentSelectionOwner?.getComponentSelectionRows?.();
 		let ownedColumns: Map<number, { start: number; end: number }> | undefined;
 		if (ownerRows && ownerRows.length > 0 && layout) {

@@ -1,3 +1,4 @@
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
 import {
 	buildNextPromptContext,
@@ -51,17 +52,30 @@ describe("sanitizeSuggestion", () => {
 });
 
 describe("extractNextPromptInput", () => {
-	// Assistant messages in AgentMessage carry provider metadata fields that are
-	// irrelevant to content extraction; test literals only need role + content.
-	const textMessage = (text: string, timestamp: number): Parameters<typeof extractNextPromptInput>[0][number] =>
-		({ role: "assistant", content: [{ type: "text", text }], timestamp }) as never;
+	const createAssistantMessage = (text: string, timestamp: number): AssistantMessage => ({
+		role: "assistant",
+		content: [{ type: "text", text }],
+		api: "anthropic-messages",
+		provider: "anthropic",
+		model: "mock",
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		stopReason: "stop",
+		timestamp,
+	});
 
 	it("takes the last assistant text and the user turn before it", () => {
 		const input = extractNextPromptInput([
 			{ role: "user", content: "first turn", timestamp: 0 },
-			textMessage("did the first thing", 1),
+			createAssistantMessage("did the first thing", 1),
 			{ role: "user", content: "second turn", timestamp: 2 },
-			textMessage("did the second thing", 3),
+			createAssistantMessage("did the second thing", 3),
 		]);
 		expect(input).toEqual({ assistantText: "did the second thing", userText: "second turn" });
 	});
@@ -69,10 +83,18 @@ describe("extractNextPromptInput", () => {
 	it("skips assistant messages without text and contentless custom messages", () => {
 		const input = extractNextPromptInput([
 			{ role: "user", content: "go", timestamp: 0 },
-			{ type: "bash_execution", command: "ls" } as never,
-			textMessage("", 1),
-			textMessage("the real reply", 2),
-		] as never[] as Parameters<typeof extractNextPromptInput>[0]);
+			{
+				role: "bashExecution",
+				command: "ls",
+				output: "",
+				exitCode: 0,
+				cancelled: false,
+				truncated: false,
+				timestamp: 1,
+			},
+			createAssistantMessage("", 2),
+			createAssistantMessage("the real reply", 3),
+		]);
 		expect(input).toEqual({ assistantText: "the real reply", userText: "go" });
 	});
 

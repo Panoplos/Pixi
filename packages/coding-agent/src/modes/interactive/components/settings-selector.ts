@@ -49,7 +49,6 @@ const DEFAULT_PROJECT_TRUST_BY_LABEL = new Map(
 export const SESSION_SUGGESTION_MODEL = "(session model)";
 
 export interface SettingsConfig {
-	/** Factory for the suggestion-model row's submenu; built by InteractiveMode (needs TUI + model runtime). */
 	buildSuggestionModelSubmenu: (
 		currentValue: string,
 		done: (selectedValue?: string, options?: { navigateTo?: string }) => void,
@@ -859,7 +858,6 @@ export class SettingsSelectorComponent extends Container {
 						callbacks.onSuggestionsEnabledChange(newValue === "true");
 						break;
 					case "suggestion-model":
-						// Reset choice is "(session model)"; everything else is a "provider/model" pattern.
 						callbacks.onSuggestionModelChange(newValue === SESSION_SUGGESTION_MODEL ? undefined : newValue);
 						break;
 					case "autocompact":

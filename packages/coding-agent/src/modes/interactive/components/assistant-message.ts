@@ -15,9 +15,14 @@ export class AssistantMessageComponent extends Container {
 	private contentContainer: Container;
 	private hideThinkingBlock: boolean;
 	private markdownTheme: MarkdownTheme;
-	private hiddenThinkingLabel: string;
+	private thinkingLabel: string;
 	private outputPad: number;
 	private markdownTransformers: readonly MarkdownTransformer[];
+	/** Override wins when set; undefined follows the global hide setting. */
+	private isThinkingRunHidden(explicitOverride: boolean | undefined): boolean {
+		return explicitOverride ?? this.hideThinkingBlock;
+	}
+
 	private lastMessage?: AssistantMessage;
 	private hasToolCalls = false;
 	private isStreaming = false;
@@ -35,7 +40,7 @@ export class AssistantMessageComponent extends Container {
 
 		this.hideThinkingBlock = hideThinkingBlock;
 		this.markdownTheme = markdownTheme;
-		this.hiddenThinkingLabel = hiddenThinkingLabel;
+		this.thinkingLabel = hiddenThinkingLabel;
 		this.outputPad = outputPad;
 		this.markdownTransformers = markdownTransformers;
 
@@ -64,7 +69,7 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	setHiddenThinkingLabel(label: string): void {
-		this.hiddenThinkingLabel = label;
+		this.thinkingLabel = label;
 		if (this.lastMessage) {
 			this.updateContent(this.lastMessage);
 		}
@@ -95,14 +100,12 @@ export class AssistantMessageComponent extends Container {
 		// Clear content container
 		this.contentContainer.clear();
 
-		// Thinking runs hidden by the global setting render nothing at all, so
-		// they must not trigger the leading spacer either.
 		let previewRunIndex = 0;
 		const hasVisibleContent = message.content.some((c) => {
 			if (c.type === "text" && c.text.trim()) return true;
 			if (c.type !== "thinking" || !c.thinking.trim()) return false;
 			const runIndex = previewRunIndex++;
-			return (this.thinkingVisibilityOverrides.get(runIndex) ?? this.hideThinkingBlock) === false;
+			return !this.isThinkingRunHidden(this.thinkingVisibilityOverrides.get(runIndex));
 		});
 
 		if (hasVisibleContent) {
@@ -147,15 +150,10 @@ export class AssistantMessageComponent extends Container {
 
 				const runIndex = thinkingRunIndex++;
 				const explicitlyCollapsed = this.thinkingVisibilityOverrides.get(runIndex);
-				const hidden = explicitlyCollapsed ?? this.hideThinkingBlock;
-				// A globally hidden thinking block renders no output: the interactive
-				// mode shows the transient "Thinking" status while streaming and
-				// appends a "Thought for Xs" line once the run finishes. A run that
-				// was collapsed by clicking keeps its clickable label so it can be
-				// expanded again.
+				const hidden = this.isThinkingRunHidden(explicitlyCollapsed);
 				if (hidden && explicitlyCollapsed === undefined) continue;
 				const thinkingComponent = hidden
-					? new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0)
+					? new Text(theme.italic(theme.fg("thinkingText", this.thinkingLabel)), this.outputPad, 0)
 					: new Markdown(
 							thinkingBlocks.join("\n\n"),
 							this.outputPad,

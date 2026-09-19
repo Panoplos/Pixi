@@ -18,7 +18,7 @@ type Ctx = {
 	thinkingStartMs: number | undefined;
 	thinkingStreamActive: boolean;
 	outputPad: number;
-	hiddenThinkingLabel: string;
+	thinkingLabel: string;
 	statusContainer: Container;
 	activeStatusIndicator: StatusIndicator | undefined;
 	workingVisible: boolean;
@@ -49,7 +49,7 @@ function makeCtx(): Ctx {
 		thinkingStartMs: undefined,
 		thinkingStreamActive: false,
 		outputPad: 1,
-		hiddenThinkingLabel: "Thinking",
+		thinkingLabel: "Thinking",
 		statusContainer: new Container(),
 		activeStatusIndicator: undefined,
 		workingVisible: true,

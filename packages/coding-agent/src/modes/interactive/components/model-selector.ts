@@ -24,6 +24,20 @@ interface ModelItem {
 	lab: string;
 }
 
+export interface ModelSelectorOptions {
+	/** Model marked as the row's current selection. */
+	currentModel?: Model<any>;
+	scopedModels: ReadonlyArray<ScopedModelItem>;
+	onSelect: (model: Model<any>) => void;
+	onCancel: () => void;
+	initialSearchInput?: string;
+	onSelectAsDefault?: (model: Model<any>) => void;
+	defaultModel?: DefaultModelReference;
+	/** When set, an unfiltered "reset" row (given by resetLabel) is offered first. */
+	onSelectReset?: () => void;
+	resetLabel?: string;
+}
+
 interface ScopedModelItem {
 	model: Model<any>;
 	thinkingLevel?: string;
@@ -70,7 +84,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private onSelectCallback: (model: Model<any>) => void;
 	private onSelectAsDefaultCallback?: (model: Model<any>) => void;
 	private onCancelCallback: () => void;
-	/** When set, an unfiltered "reset" row (e.g. "(session model)") is offered first. */
 	private onSelectReset?: () => void;
 	private resetLabel?: string;
 	private errorMessage?: string;
@@ -86,39 +99,27 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private refreshTimeout?: ReturnType<typeof setTimeout>;
 	private closed = false;
 
-	constructor(
-		tui: TUI,
-		currentModel: Model<any> | undefined,
-		modelRuntime: ModelRuntime,
-		scopedModels: ReadonlyArray<ScopedModelItem>,
-		onSelect: (model: Model<any>) => void,
-		onCancel: () => void,
-		initialSearchInput?: string,
-		onSelectAsDefault?: (model: Model<any>) => void,
-		defaultModel?: DefaultModelReference,
-		onSelectReset?: () => void,
-		resetLabel?: string,
-	) {
+	constructor(tui: TUI, modelRuntime: ModelRuntime, options: ModelSelectorOptions) {
 		super();
 
 		this.tui = tui;
-		this.currentModel = currentModel;
+		this.currentModel = options.currentModel;
 		this.modelRuntime = modelRuntime;
-		this.scopedModels = scopedModels;
-		this.defaultModel = defaultModel;
-		this.scope = scopedModels.length > 0 ? "scoped" : "all";
-		this.onSelectCallback = onSelect;
-		this.onSelectAsDefaultCallback = onSelectAsDefault;
-		this.onCancelCallback = onCancel;
-		this.onSelectReset = onSelectReset;
-		this.resetLabel = resetLabel;
+		this.scopedModels = options.scopedModels;
+		this.defaultModel = options.defaultModel;
+		this.scope = options.scopedModels.length > 0 ? "scoped" : "all";
+		this.onSelectCallback = options.onSelect;
+		this.onSelectAsDefaultCallback = options.onSelectAsDefault;
+		this.onCancelCallback = options.onCancel;
+		this.onSelectReset = options.onSelectReset;
+		this.resetLabel = options.resetLabel;
 
 		// Add top border
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
 
 		// Add hint about model filtering
-		if (scopedModels.length > 0) {
+		if (options.scopedModels.length > 0) {
 			this.scopeText = new Text(this.getScopeText(), 0, 0);
 			this.addChild(this.scopeText);
 			this.scopeHintText = new Text(this.getScopeHintText(), 0, 0);
@@ -131,8 +132,8 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 		// Create search input
 		this.searchInput = new Input();
-		if (initialSearchInput) {
-			this.searchInput.setValue(initialSearchInput);
+		if (options.initialSearchInput) {
+			this.searchInput.setValue(options.initialSearchInput);
 		}
 		this.searchInput.onSubmit = () => {
 			// Enter on search input selects the first filtered item
@@ -169,13 +170,12 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 		// Render the current snapshot immediately, then refresh in the background.
 		this.loadModelsFromSnapshot();
-		if (initialSearchInput) this.filterModels(initialSearchInput);
+		if (options.initialSearchInput) this.filterModels(options.initialSearchInput);
 		else this.updateList();
 		this.tui.requestRender();
 		void this.refreshModels();
 	}
 
-	/** The reset row is offered only while the search box is unfiltered. */
 	private showResetRow(): boolean {
 		return this.onSelectReset !== undefined && this.searchInput.getValue().trim() === "";
 	}

@@ -2,21 +2,11 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { type Api, type Context, contentText, type Model, uuidv7 } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "./model-runtime.ts";
 
-/**
- * Suggested next user message ("ghost text"): after a turn finishes, ask the
- * model what the user would plausibly type next and show it as muted inline
- * text in the empty editor. Tab streams it into the input.
- */
-
-/** Hard cap on a suggestion; ghost text stays scannable and one keypress long. */
 export const SUGGESTION_MAX_LENGTH = 100;
 
 const ASSISTANT_SNIPPET_MAX_CHARS = 1200;
 const USER_SNIPPET_MAX_CHARS = 400;
 const SUGGESTION_MAX_TOKENS = 64;
-
-/** Sentinel the model is told to reply with when nothing sensible follows. */
-const NONE_SENTINEL = "none";
 
 export interface NextPromptSuggesterDeps {
 	modelRuntime: Pick<ModelRuntime, "completeSimple">;
@@ -31,7 +21,6 @@ export interface NextPromptInput {
 }
 
 export function extractNextPromptInput(messages: readonly AgentMessage[]): NextPromptInput | undefined {
-	// Custom agent messages (e.g. bash echo) carry no LLM content; skip them.
 	const textOf = (message: AgentMessage): string =>
 		"content" in message ? contentText(message.content, "").trim() : "";
 	for (let i = messages.length - 1; i >= 0; i--) {
@@ -86,7 +75,6 @@ export function sanitizeSuggestion(raw: string, maxLength = SUGGESTION_MAX_LENGT
 	const trimmed = raw.trim();
 	if (!trimmed) return undefined;
 
-	// One line: skip code-fence markers rather than treating them as the text.
 	const line = trimmed
 		.split("\n")
 		.map((part) => part.trim())
@@ -94,7 +82,6 @@ export function sanitizeSuggestion(raw: string, maxLength = SUGGESTION_MAX_LENGT
 	if (!line) return undefined;
 
 	let text = line;
-	// Strip one matching pair of wrapping quotes or backticks.
 	if (
 		text.length >= 2 &&
 		((text.startsWith('"') && text.endsWith('"')) ||
@@ -104,12 +91,11 @@ export function sanitizeSuggestion(raw: string, maxLength = SUGGESTION_MAX_LENGT
 		text = text.slice(1, -1).trim();
 	}
 	if (!text) return undefined;
-	if (text.toLowerCase() === NONE_SENTINEL || /^none[.\s]*$/i.test(text)) return undefined;
+	if (/^none[.\s]*$/i.test(text)) return undefined;
 
 	text = text.replace(/\s+/g, " ");
 	if (text.length <= maxLength) return text;
 
-	// Too long: cut at the last word boundary inside the cap.
 	const cut = text.slice(0, maxLength);
 	const spaceIndex = cut.lastIndexOf(" ");
 	return spaceIndex >= 20 ? cut.slice(0, spaceIndex) : undefined;

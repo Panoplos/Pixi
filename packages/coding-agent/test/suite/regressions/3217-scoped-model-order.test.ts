@@ -75,14 +75,12 @@ describe("issue #3217 scoped model ordering", () => {
 		const modelOne = harness.getModel("faux-1")!;
 		const modelTwo = harness.getModel("faux-2")!;
 		const modelThree = harness.getModel("faux-3")!;
-		const selector = new ModelSelectorComponent(
-			createFakeTui(),
-			modelOne,
-			harness.session.modelRuntime,
-			[{ model: modelTwo }, { model: modelOne }, { model: modelThree }],
-			() => {},
-			() => {},
-		);
+		const selector = new ModelSelectorComponent(createFakeTui(), harness.session.modelRuntime, {
+			currentModel: modelOne,
+			scopedModels: [{ model: modelTwo }, { model: modelOne }, { model: modelThree }],
+			onSelect: () => {},
+			onCancel: () => {},
+		});
 
 		await vi.waitFor(() => {
 			const rendered = stripAnsi(selector.render(120).join("\n"));

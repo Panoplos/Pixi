@@ -34,14 +34,12 @@ describe("model selector", () => {
 			],
 		});
 		const currentModel = harness.getModel("current-model")!;
-		const selector = new ModelSelectorComponent(
-			createFakeTui(),
+		const selector = new ModelSelectorComponent(createFakeTui(), harness.session.modelRuntime, {
 			currentModel,
-			harness.session.modelRuntime,
-			[],
-			() => {},
-			() => {},
-		);
+			scopedModels: [],
+			onSelect: () => {},
+			onCancel: () => {},
+		});
 
 		const getModelRow = (id: string): string | undefined =>
 			stripAnsi(selector.render(120).join("\n"))
@@ -61,16 +59,13 @@ describe("model selector", () => {
 		harness = await createHarness();
 		const currentModel = harness.getModel()!;
 		const saveDefault = vi.fn();
-		const selector = new ModelSelectorComponent(
-			createFakeTui(),
+		const selector = new ModelSelectorComponent(createFakeTui(), harness.session.modelRuntime, {
 			currentModel,
-			harness.session.modelRuntime,
-			[],
-			() => {},
-			() => {},
-			undefined,
-			saveDefault,
-		);
+			scopedModels: [],
+			onSelect: () => {},
+			onSelectAsDefault: saveDefault,
+			onCancel: () => {},
+		});
 
 		expect(stripAnsi(selector.render(120).join("\n"))).toContain("Ctrl+R to set as default");
 		selector.handleInput("\x13");
@@ -87,30 +82,24 @@ describe("model selector", () => {
 			],
 		});
 		const reset = vi.fn();
-		const selector = new ModelSelectorComponent(
-			createFakeTui(),
-			undefined, // no override: the reset row is the current selection
-			harness.session.modelRuntime,
-			[],
-			() => {},
-			() => {},
-			undefined,
-			undefined,
-			undefined,
-			reset,
-			"(session model)",
-		);
+		const selector = new ModelSelectorComponent(createFakeTui(), harness.session.modelRuntime, {
+			scopedModels: [],
+			onSelect: () => {},
+			onCancel: () => {},
+			onSelectReset: reset,
+			resetLabel: "(session model)",
+		});
 
 		const rendered = (): string => stripAnsi(selector.render(120).join("\n"));
 		expect(rendered()).toContain("→ ✓ (session model)");
 
-		selector.handleInput("\x1b[B"); // down: reset -> first model
+		selector.handleInput("\x1b[B");
 		expect(rendered()).not.toContain("→ ✓ (session model)");
-		selector.handleInput("\x1b[A"); // up: back to reset
-		selector.handleInput("\r"); // pick the reset row
+		selector.handleInput("\x1b[A");
+		selector.handleInput("\r");
 		expect(reset).toHaveBeenCalledTimes(1);
 
-		selector.handleInput("a"); // filtering hides the reset row
+		selector.handleInput("a");
 		expect(rendered()).not.toContain("(session model)");
 		selector.dispose();
 	});
@@ -125,14 +114,12 @@ describe("model selector", () => {
 			]),
 		});
 
-		const selector = new ModelSelectorComponent(
-			createFakeTui(),
-			harness.getModel(),
-			harness.session.modelRuntime,
-			[],
-			() => {},
-			() => {},
-		);
+		const selector = new ModelSelectorComponent(createFakeTui(), harness.session.modelRuntime, {
+			currentModel: harness.getModel(),
+			scopedModels: [],
+			onSelect: () => {},
+			onCancel: () => {},
+		});
 
 		await vi.waitFor(() => {
 			const rendered = stripAnsi(selector.render(120).join("\n"));

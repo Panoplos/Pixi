@@ -419,7 +419,6 @@ export class InteractiveMode {
 	private pendingImageAttachments = new Map<number, { path: string; hash: string }>();
 	private pendingUserInputs: Array<{ text: string; images: ImageContent[] }> = [];
 
-	// In-flight next-prompt suggestion generation (at most one, cancelable).
 	private suggestionAbort?: AbortController;
 	private activeStatusIndicator: StatusIndicator | undefined = undefined;
 	private activeWorkingIndicatorEmbedded = false;
@@ -429,10 +428,8 @@ export class InteractiveMode {
 	private workingIndicatorOptions: WorkingIndicatorOptions | undefined = undefined;
 	private thinkingIndicatorOptions: WorkingIndicatorOptions | undefined = undefined;
 	private readonly defaultWorkingMessage = "Working";
-	// Message for the thinking status indicator; also the label of a thinking
-	// run that was collapsed by clicking it in the chat.
-	private readonly defaultHiddenThinkingLabel = "Thinking";
-	private hiddenThinkingLabel = this.defaultHiddenThinkingLabel;
+	private readonly defaultThinkingLabel = "Thinking";
+	private thinkingLabel = this.defaultThinkingLabel;
 
 	private lastSigintTime = 0;
 	private lastEscapeTime = 0;
@@ -2175,12 +2172,6 @@ export class InteractiveMode {
 		}
 	}
 
-	/**
-	 * Submenu for the "Suggestion model" settings row: the same /model picker,
-	 * embedded. Picking a model stores "provider/model"; the reset row stores
-	 * the session-model default. Ctrl+S (save as startup default) is
-	 * intentionally not offered here.
-	 */
 	private buildSuggestionModelSubmenu(
 		currentValue: string,
 		done: (selectedValue?: string, options?: { navigateTo?: string }) => void,
@@ -2189,26 +2180,16 @@ export class InteractiveMode {
 			currentValue === SESSION_SUGGESTION_MODEL
 				? undefined
 				: parseModelPattern(currentValue, [...this.session.modelRuntime.getAvailableSnapshot()]).model;
-		return new ModelSelectorComponent(
-			this.ui,
-			resolved,
-			this.session.modelRuntime,
-			this.session.scopedModels,
-			(model) => done(`${model.provider}/${model.id}`),
-			() => done(),
-			undefined, // initialSearchInput
-			undefined, // onSelectAsDefault: suggestions must not touch the startup default
-			undefined, // defaultModel badge
-			() => done(SESSION_SUGGESTION_MODEL),
-			SESSION_SUGGESTION_MODEL,
-		);
+		return new ModelSelectorComponent(this.ui, this.session.modelRuntime, {
+			currentModel: resolved,
+			scopedModels: this.session.scopedModels,
+			onSelect: (model) => done(`${model.provider}/${model.id}`),
+			onCancel: () => done(),
+			onSelectReset: () => done(SESSION_SUGGESTION_MODEL),
+			resetLabel: SESSION_SUGGESTION_MODEL,
+		});
 	}
 
-	/**
-	 * Show a suggested next user message as ghost text in the empty input after
-	 * a turn finishes. Failures are silent: suggestions are a nicety, never a
-	 * source of errors.
-	 */
 	private maybeStartSuggestion(event: { messages: AgentMessage[]; willRetry: boolean }): void {
 		if (event.willRetry || this.pendingUserInputs.length > 0) return;
 		if (!this.settingsManager.getSuggestionsEnabled()) return;
@@ -2222,7 +2203,6 @@ export class InteractiveMode {
 		let model: Model<any> = sessionModel;
 		const modelPattern = this.settingsManager.getSuggestionsModel();
 		if (modelPattern) {
-			// Unresolvable pattern falls back to the session model.
 			model = parseModelPattern(modelPattern, [...this.session.modelRuntime.getAvailableSnapshot()]).model ?? model;
 		}
 
@@ -2232,8 +2212,6 @@ export class InteractiveMode {
 			.then((suggestion) => {
 				if (abort.signal.aborted || suggestion === undefined) return;
 				if (this.session.isStreaming || this.session.isCompacting || this.pendingUserInputs.length > 0) return;
-				// The user may have typed while the suggestion was generated; their
-				// input supersedes the suggestion.
 				if (this.editor.getText().trim() !== "") return;
 				this.editor.setGhostSuggestion?.(suggestion);
 			})
@@ -2243,7 +2221,6 @@ export class InteractiveMode {
 			});
 	}
 
-	/** Drop any pending or displayed suggestion; keep already-typed text. */
 	private clearSuggestionState(): void {
 		this.suggestionAbort?.abort();
 		this.suggestionAbort = undefined;
@@ -2286,7 +2263,7 @@ export class InteractiveMode {
 							this.workingMessage ?? this.defaultWorkingMessage,
 							this.workingIndicatorOptions,
 						)
-					: new ThinkingStatusIndicator(this.ui, this.hiddenThinkingLabel, this.thinkingIndicatorOptions),
+					: new ThinkingStatusIndicator(this.ui, this.thinkingLabel, this.thinkingIndicatorOptions),
 			);
 		}
 		this.ui.requestRender();
@@ -2309,9 +2286,9 @@ export class InteractiveMode {
 	}
 
 	private setHiddenThinkingLabel(label?: string): void {
-		this.hiddenThinkingLabel = label ?? this.defaultHiddenThinkingLabel;
+		this.thinkingLabel = label ?? this.defaultThinkingLabel;
 		if (this.activeStatusIndicator?.kind === "thinking") {
-			this.activeStatusIndicator.setMessage(this.hiddenThinkingLabel);
+			this.activeStatusIndicator.setMessage(this.thinkingLabel);
 		}
 		this.ui.requestRender();
 	}
@@ -3459,7 +3436,7 @@ export class InteractiveMode {
 						undefined,
 						this.hideThinkingBlock,
 						this.getMarkdownThemeWithSettings(),
-						this.hiddenThinkingLabel,
+						this.thinkingLabel,
 						this.outputPad,
 						this.getMarkdownTransformers(),
 					);
@@ -3492,7 +3469,7 @@ export class InteractiveMode {
 						this.thinkingStartMs = Date.now();
 						if (this.hideThinkingBlock && this.workingVisible) {
 							this.showStatusIndicator(
-								new ThinkingStatusIndicator(this.ui, this.hiddenThinkingLabel, this.thinkingIndicatorOptions),
+								new ThinkingStatusIndicator(this.ui, this.thinkingLabel, this.thinkingIndicatorOptions),
 							);
 						}
 					} else if (
@@ -3970,7 +3947,7 @@ export class InteractiveMode {
 					message,
 					this.hideThinkingBlock,
 					this.getMarkdownThemeWithSettings(),
-					this.hiddenThinkingLabel,
+					this.thinkingLabel,
 					this.outputPad,
 					this.getMarkdownTransformers(),
 				);
@@ -4814,7 +4791,7 @@ export class InteractiveMode {
 		if (this.thinkingStreamActive && this.workingVisible) {
 			this.showStatusIndicator(
 				this.hideThinkingBlock
-					? new ThinkingStatusIndicator(this.ui, this.hiddenThinkingLabel, this.thinkingIndicatorOptions)
+					? new ThinkingStatusIndicator(this.ui, this.thinkingLabel, this.thinkingIndicatorOptions)
 					: new WorkingStatusIndicator(
 							this.ui,
 							this.workingMessage ?? this.defaultWorkingMessage,
@@ -5597,20 +5574,18 @@ export class InteractiveMode {
 			};
 			const defaultProvider = this.settingsManager.getDefaultProvider();
 			const defaultModel = this.settingsManager.getDefaultModel();
-			const selector = new ModelSelectorComponent(
-				this.ui,
-				this.session.model,
-				this.session.modelRuntime,
-				this.session.scopedModels,
-				(model) => selectModel(model, false),
-				() => {
+			const selector = new ModelSelectorComponent(this.ui, this.session.modelRuntime, {
+				currentModel: this.session.model,
+				scopedModels: this.session.scopedModels,
+				onSelect: (model) => selectModel(model, false),
+				onSelectAsDefault: (model) => selectModel(model, true),
+				defaultModel: defaultProvider && defaultModel ? { provider: defaultProvider, id: defaultModel } : undefined,
+				initialSearchInput,
+				onCancel: () => {
 					done();
 					this.ui.requestRender();
 				},
-				initialSearchInput,
-				(model) => selectModel(model, true),
-				defaultProvider && defaultModel ? { provider: defaultProvider, id: defaultModel } : undefined,
-			);
+			});
 			return { component: selector, focus: selector, dispose: () => selector.dispose() };
 		});
 	}

@@ -65,14 +65,11 @@ describe("issue #6999 models.json hot reload", () => {
 
 		writeFileSync(modelsPath, JSON.stringify(modelsJson("new-provider", "new-model")));
 		const { tui, renderedAfterRefresh } = observeRefreshRender();
-		const selector = new ModelSelectorComponent(
-			tui,
-			undefined,
-			modelRuntime,
-			[],
-			() => {},
-			() => {},
-		);
+		const selector = new ModelSelectorComponent(tui, modelRuntime, {
+			scopedModels: [],
+			onSelect: () => {},
+			onCancel: () => {},
+		});
 
 		await renderedAfterRefresh;
 		const rendered = stripAnsi(selector.render(120).join("\n"));

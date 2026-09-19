@@ -125,19 +125,17 @@ test("owned selection highlight stops at the editor's text instead of the row ed
 	const { terminal, tui } = await createEditor("one\ntwo");
 	drag(terminal, 7, 2, 7, 3);
 	await terminal.waitForRender();
-	// Screen row 1 renders "one", row 2 "two"; text starts at cell 4
-	// (padding 2 + prefix 2). The highlight covers only the selected cells and
-	// must not spill over the editor's padding to the screen edge.
-	assert.deepStrictEqual(terminal.getInverseColumnRanges(1), [{ start: 6, end: 7 }]);
-	assert.deepStrictEqual(terminal.getInverseColumnRanges(2), [{ start: 4, end: 7 }]);
+	const viewport = terminal.getViewport();
+	const textStart = viewport[2].indexOf("two");
+	const textEnd = textStart + "two".length;
+	const dragCell = 7 - 1; // the 1-based screen column the drag pressed and released on
+	assert.deepStrictEqual(terminal.getInverseColumnRanges(1), [{ start: dragCell, end: textEnd }]);
+	assert.deepStrictEqual(terminal.getInverseColumnRanges(2), [{ start: textStart, end: textEnd }]);
 	tui.stop();
 });
 
 test("selection carries the cursor visuals: no reverse block while held", async () => {
 	const { terminal, tui, editor } = await createEditor("hello 🙂 world");
-	// Drag over "world": the selection itself marks the held range, so the
-	// editor emits only the zero-width hardware-cursor marker and no reverse
-	// block inside the highlighted cells.
 	drag(terminal, 5, 3, 9, 3);
 	const rows = editor.render(16);
 	assert.ok(

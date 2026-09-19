@@ -48,14 +48,12 @@ describe("model selector filter resets selection to top", () => {
 		harnesses.push(harness);
 
 		const current = harness.getModel("alpha-1")!;
-		const selector = new ModelSelectorComponent(
-			createFakeTui(),
-			current,
-			harness.session.modelRuntime,
-			[],
-			() => {},
-			() => {},
-		);
+		const selector = new ModelSelectorComponent(createFakeTui(), harness.session.modelRuntime, {
+			currentModel: current,
+			scopedModels: [],
+			onSelect: () => {},
+			onCancel: () => {},
+		});
 
 		await vi.waitFor(() => {
 			const rendered = stripAnsi(selector.render(120).join("\n"));
@@ -98,14 +96,12 @@ describe("model selector filter resets selection to top", () => {
 
 		// Scoped list is intentionally not in current-model-first order; the
 		// current model (alpha-1) sits at index 2.
-		const selector = new ModelSelectorComponent(
-			createFakeTui(),
-			alpha1,
-			harness.session.modelRuntime,
-			[{ model: alpha2 }, { model: alpha3 }, { model: alpha1 }],
-			() => {},
-			() => {},
-		);
+		const selector = new ModelSelectorComponent(createFakeTui(), harness.session.modelRuntime, {
+			currentModel: alpha1,
+			scopedModels: [{ model: alpha2 }, { model: alpha3 }, { model: alpha1 }],
+			onSelect: () => {},
+			onCancel: () => {},
+		});
 
 		await vi.waitFor(() => {
 			const rendered = stripAnsi(selector.render(120).join("\n"));

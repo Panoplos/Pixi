@@ -211,7 +211,6 @@ export interface Settings {
 	suggestions?: SuggestionsSettings;
 }
 
-/** Suggested next-user-message settings (ghost text after a turn finishes). */
 export interface SuggestionsSettings {
 	enabled?: boolean; // default: true
 	model?: string; // "provider/model" pattern; default: the active session model
