@@ -1597,14 +1597,14 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 	const isCloudflareAiGateway = provider === "cloudflare-ai-gateway" || baseUrl.includes("gateway.ai.cloudflare.com");
 	const isNvidia = provider === "nvidia" || baseUrl.includes("integrate.api.nvidia.com");
 	const isAntLing = provider === "ant-ling" || baseUrl.includes("api.ant-ling.com");
+	const isCerebras = provider === "cerebras" || baseUrl.includes("cerebras.ai");
 	const isDeepSeek = provider === "deepseek" || baseUrl.toLowerCase().includes("deepseek.com");
 	const isDeepInfra = provider === "deepinfra" || baseUrl.includes("api.deepinfra.com");
 	const isInco = provider === "inco" || baseUrl.includes("api.inco.ai");
 
 	const isNonStandard =
 		isNvidia ||
-		provider === "cerebras" ||
-		baseUrl.includes("cerebras.ai") ||
+		isCerebras ||
 		provider === "xai" ||
 		baseUrl.includes("api.x.ai") ||
 		isTogether ||
@@ -1667,7 +1667,8 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		zaiToolStream: false,
 		supportsThinkingTokenBudget: false,
 		thinkingTokenBudgetField: undefined,
-		supportsStrictMode: !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia,
+		// OpenAI compatibility alone does not imply strict JSON-schema tool support.
+		supportsStrictMode: false,
 		supportsOpenAIGrammarTools: false,
 		supportsMidConvoSystemMessages: false,
 		supportsMidConvoToolAdditions: false,

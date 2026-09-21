@@ -9,7 +9,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
-import type { AssistantMessage, ImageContent, Message, Model, Usage } from "@earendil-works/pi-ai/compat";
+import {
+	type AssistantMessage,
+	type ImageContent,
+	isRetryableAssistantError,
+	type Message,
+	type Model,
+	type Usage,
+} from "@earendil-works/pi-ai/compat";
 import type {
 	AutocompleteItem,
 	AutocompleteProvider,
@@ -65,6 +72,8 @@ import {
 	computeCacheWaste,
 	detectCacheMiss,
 } from "../../core/cache-stats.ts";
+import { formatCacheWarmingStatus, formatCacheWarmingUsage } from "../../core/cache-warmer.ts";
+import { findExtensionStackMatches, recordCrash, takeUnnotifiedCrash } from "../../core/crash-log.ts";
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "../../core/defaults.ts";
 import type {
 	AutocompleteProviderFactory,
@@ -95,7 +104,12 @@ import { extractNextPromptInput, suggestNextPrompt } from "../../core/next-promp
 import { DefaultPackageManager } from "../../core/package-manager.ts";
 import type { ResourceDiagnostic } from "../../core/resource-loader.ts";
 import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../core/session-cwd.ts";
-import { type SessionEntry, SessionManager, sessionEntryToContextMessages } from "../../core/session-manager.ts";
+import {
+	type SessionEntry,
+	SessionManager,
+	sessionEntryToContextMessages,
+	type UsageEntry,
+} from "../../core/session-manager.ts";
 import type { FullscreenExitOutput, TuiMode } from "../../core/settings-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
@@ -116,6 +130,7 @@ import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { loadAllHighlightLanguages } from "../../utils/syntax-highlight.ts";
 import { ensureTool, type ToolStatus } from "../../utils/tools-manager.ts";
 import { checkForNewPiVersion, type LatestPiRelease } from "../../utils/version-check.ts";
+import { reportBug } from "./bug-report.ts";
 import { createChatViewport } from "./chat-viewport.ts";
 import { ArminComponent } from "./components/armin.ts";
 import { AssistantMessageComponent } from "./components/assistant-message.ts";
@@ -241,7 +256,7 @@ type CompactionCostNotice = {
 	usage: Usage;
 };
 
-type RenderSessionItem = AgentMessage | Extract<SessionEntry, { type: "custom" }> | CompactionCostNotice;
+type RenderSessionItem = AgentMessage | Extract<SessionEntry, { type: "custom" | "usage" }> | CompactionCostNotice;
 
 function isCustomSessionEntry(item: RenderSessionItem): item is Extract<SessionEntry, { type: "custom" }> {
 	return "type" in item && item.type === "custom";
@@ -255,6 +270,10 @@ function isCompactionCostNotice(item: RenderSessionItem): item is CompactionCost
 	return "type" in item && item.type === "compaction_cost";
 }
 
+function isUsageSessionEntry(item: RenderSessionItem): item is Extract<SessionEntry, { type: "usage" }> {
+	return "type" in item && item.type === "usage";
+}
+
 const DEAD_TERMINAL_ERROR_CODES = new Set(["EIO", "EPIPE", "ENOTCONN"]);
 
 function isDeadTerminalError(error: unknown): boolean {
@@ -263,6 +282,23 @@ function isDeadTerminalError(error: unknown): boolean {
 	}
 	const code = (error as NodeJS.ErrnoException).code;
 	return code !== undefined && DEAD_TERMINAL_ERROR_CODES.has(code);
+}
+
+export function formatCrashExtensionHint(extensionMatches: readonly string[] | undefined): string | undefined {
+	const matches = Array.isArray(extensionMatches)
+		? extensionMatches.filter((match): match is string => typeof match === "string" && match.length > 0)
+		: [];
+	if (matches.length === 0) return undefined;
+	const quoted = matches.map((match) => `\`${match}\``);
+	const labels =
+		quoted.length === 1
+			? quoted[0]
+			: quoted.length === 2
+				? quoted.join(" and ")
+				: `${quoted.slice(0, -1).join(", ")}, and ${quoted[quoted.length - 1]}`;
+	const noun = matches.length === 1 ? "extension" : "extensions";
+	const pronoun = matches.length === 1 ? "it" : "them";
+	return `A stack frame came from loaded ${noun} ${labels}, which may be involved. Try disabling ${pronoun} with \`${APP_NAME} config\`, or run \`${APP_NAME} -ne\` to confirm.`;
 }
 
 const ANTHROPIC_SUBSCRIPTION_AUTH_WARNING =
@@ -507,6 +543,9 @@ export class InteractiveMode {
 
 	// Shutdown state
 	private shutdownRequested = false;
+
+	/** The `/bug` hint is shown at most once per session so error output stays readable. */
+	private bugReportHintShown = false;
 
 	// Extension UI state
 	private extensionSelector: ExtensionSelectorComponent | undefined = undefined;
@@ -1144,6 +1183,14 @@ export class InteractiveMode {
 
 		if (modelFallbackMessage) {
 			this.showWarning(modelFallbackMessage);
+		}
+
+		const crash = takeUnnotifiedCrash();
+		if (crash) {
+			const when = new Date(crash.timestamp).toLocaleString();
+			this.showWarning(
+				`${APP_NAME} crashed on ${when} (${crash.message}). Run /bug to report it; the crash details are attached automatically.`,
+			);
 		}
 
 		void this.maybeWarnAboutAnthropicSubscriptionAuth();
@@ -2035,9 +2082,69 @@ export class InteractiveMode {
 	private async handleFatalRuntimeError(prefix: string, error: unknown): Promise<never> {
 		const message = error instanceof Error ? error.message : String(error);
 		this.showError(`${prefix}: ${message}`);
+		const extensionHint = this.getCrashExtensionHint(error);
+		if (extensionHint) {
+			this.chatContainer.addChild(new Text(theme.fg("warning", extensionHint), this.outputPad, 0));
+		}
+		if (this.recordCrash("fatal_error", error)) {
+			this.chatContainer.addChild(new Text(theme.fg("muted", this.crashReportInstructions()), this.outputPad, 0));
+		}
 		stopThemeWatcher();
 		this.stop("transcript");
 		process.exit(1);
+	}
+
+	private getCrashExtensionHint(error: unknown): string | undefined {
+		try {
+			return formatCrashExtensionHint(
+				findExtensionStackMatches(
+					error instanceof Error ? error.stack : undefined,
+					this.session.resourceLoader.getExtensions().extensions,
+				),
+			);
+		} catch {
+			return undefined;
+		}
+	}
+
+	/** Persist a crash so the next start can point the user at `/bug`. Returns false when nothing was written. */
+	private recordCrash(kind: "uncaught_exception" | "fatal_error", error: unknown): boolean {
+		try {
+			return (
+				recordCrash({
+					kind,
+					error,
+					sessionFile: this.session.sessionFile,
+					cwd: this.session.sessionManager.getCwd(),
+				}) !== undefined
+			);
+		} catch {
+			return false;
+		}
+	}
+
+	private crashReportInstructions(): string {
+		const resume = this.session.sessionFile ? `run \`${APP_NAME} -r\` to resume the session, then` : "start pi and";
+		return `To report this crash: ${resume} run /bug. The crash details are attached automatically.`;
+	}
+
+	private suggestBugReport(): void {
+		if (this.bugReportHintShown) return;
+		this.bugReportHintShown = true;
+		this.chatContainer.addChild(
+			new Text(
+				theme.fg("muted", `If this looks like a ${APP_NAME} bug, /bug sends a report to the developers.`),
+				this.outputPad,
+				0,
+			),
+		);
+		this.ui.requestRender();
+	}
+
+	private maybeSuggestBugReport(message: AssistantMessage): void {
+		if (message.stopReason !== "error" || isRetryableAssistantError(message)) return;
+		if (/\b(?:abort(?:ed)?|cancel(?:l?ed)?)\b/i.test(message.errorMessage ?? "")) return;
+		this.suggestBugReport();
 	}
 
 	private renderCurrentSessionState(): void {
@@ -3201,6 +3308,12 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
+			if (text === "/bug" || text.startsWith("/bug ")) {
+				const hint = text.slice("/bug".length).trim();
+				this.editor.setText("");
+				await this.handleBugCommand(hint ? hint : undefined);
+				return;
+			}
 			if (text === "/copy") {
 				await this.handleCopyCommand();
 				this.editor.setText("");
@@ -3407,6 +3520,9 @@ export class InteractiveMode {
 				if (event.entry.type === "custom") {
 					this.addCustomEntryToChat(event.entry);
 					this.ui.requestRender();
+				} else if (event.entry.type === "usage" && event.entry.kind === "cache_warm") {
+					this.addCacheWarmingUsage(event.entry);
+					this.ui.requestRender();
 				}
 				break;
 
@@ -3542,6 +3658,7 @@ export class InteractiveMode {
 							});
 						}
 						this.pendingTools.clear();
+						this.maybeSuggestBugReport(this.streamingMessage);
 					} else {
 						// Args are now complete - trigger diff computation for edit tools
 						for (const [, component] of this.pendingTools.entries()) {
@@ -3980,8 +4097,8 @@ export class InteractiveMode {
 		this.standaloneToolCall.clear();
 		this.finalizeActiveToolSection();
 		const renderedPendingTools = new Map<string, ToolExecutionComponent>();
-		// Cache-miss notices are not persisted; re-derive them from the full entry
-		// list and re-inject them after the assistant messages that paid for them.
+		// Cache misses are not persisted, unlike successful cache-warming usage.
+		// Re-derive them and inject them after the assistant messages that paid for them.
 		const cacheMisses = this.settingsManager.getShowCacheMissNotices()
 			? collectCacheMisses(this.sessionManager.getEntries(), this.session.modelRuntime)
 			: new Map<AssistantMessage, CacheMiss>();
@@ -3994,6 +4111,10 @@ export class InteractiveMode {
 		for (const item of items) {
 			if (isCustomSessionEntry(item)) {
 				this.addCustomEntryToChat(item);
+				continue;
+			}
+			if (isUsageSessionEntry(item)) {
+				this.addCacheWarmingUsage(item);
 				continue;
 			}
 			if (isCompactionCostNotice(item)) {
@@ -4103,7 +4224,7 @@ export class InteractiveMode {
 		options: { updateFooter?: boolean; populateHistory?: boolean } = {},
 	): void {
 		const items = entries.flatMap((entry): RenderSessionItem[] => {
-			if (entry.type === "custom") {
+			if (entry.type === "custom" || (entry.type === "usage" && entry.kind === "cache_warm")) {
 				return [entry];
 			}
 			const messages = sessionEntryToContextMessages(entry);
@@ -4113,6 +4234,12 @@ export class InteractiveMode {
 			return messages;
 		});
 		this.renderSessionItems(items, options);
+	}
+
+	private addCacheWarmingUsage(entry: UsageEntry): void {
+		if (!this.settingsManager.getShowCacheMissNotices()) return;
+		this.chatContainer.addChild(new Spacer(1));
+		this.chatContainer.addChild(new Text(theme.fg("dim", formatCacheWarmingUsage(entry)), 1, 0));
 	}
 
 	/**
@@ -4362,6 +4489,11 @@ export class InteractiveMode {
 		} catch {}
 		console.error(`${APP_NAME} exiting due to uncaughtException:`);
 		console.error(error);
+		const extensionHint = this.getCrashExtensionHint(error);
+		if (extensionHint) console.error(`\n${extensionHint}`);
+		if (this.recordCrash("uncaught_exception", error)) {
+			console.error(`\n${this.crashReportInstructions()}`);
+		}
 		process.exit(1);
 	}
 
@@ -4971,7 +5103,7 @@ export class InteractiveMode {
 		if (allQueued.length === 0) {
 			this.updatePendingMessagesDisplay();
 			if (options?.abort) {
-				this.agent.abort();
+				void this.session.abort();
 			}
 			return 0;
 		}
@@ -4981,7 +5113,7 @@ export class InteractiveMode {
 		this.editor.setText(combinedText);
 		this.updatePendingMessagesDisplay();
 		if (options?.abort) {
-			this.agent.abort();
+			void this.session.abort();
 		}
 		return allQueued.length;
 	}
@@ -5157,6 +5289,7 @@ export class InteractiveMode {
 					followUpMode: this.session.followUpMode,
 					transport: this.settingsManager.getTransport(),
 					httpIdleTimeoutMs: this.settingsManager.getHttpIdleTimeoutMs(),
+					cacheWarmingMode: this.settingsManager.getCacheWarmingMode(),
 					thinkingLevel: this.settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL,
 					availableThinkingLevels: [...THINKING_LEVEL_OPTIONS],
 					modelThinkingLevels: this.settingsManager.getAllModelThinkingLevels(),
@@ -5237,6 +5370,10 @@ export class InteractiveMode {
 						this.settingsManager.setHttpIdleTimeoutMs(timeoutMs);
 						configureHttpDispatcher(timeoutMs);
 						this.showStatus(`HTTP idle timeout: ${formatHttpIdleTimeoutMs(timeoutMs)}`);
+					},
+					onCacheWarmingModeChange: (mode) => {
+						this.session.setCacheWarmingMode(mode);
+						this.showStatus(`Cache warming: ${mode}`);
 					},
 					onModelThinkingLevelChange: (provider, modelId, level) => {
 						this.settingsManager.setModelThinkingLevel(provider, modelId, level);
@@ -5945,12 +6082,17 @@ export class InteractiveMode {
 	private showSessionSelector(): void {
 		this.showSelector((done) => {
 			const selector = new SessionSelectorComponent(
-				(onProgress) =>
-					SessionManager.list(this.sessionManager.getCwd(), this.sessionManager.getSessionDir(), onProgress),
-				(onProgress) =>
+				(onProgress, signal) =>
+					SessionManager.list(
+						this.sessionManager.getCwd(),
+						this.sessionManager.getSessionDir(),
+						onProgress,
+						signal,
+					),
+				(onProgress, signal) =>
 					this.sessionManager.usesDefaultSessionDir()
-						? SessionManager.listAll(onProgress)
-						: SessionManager.listAll(this.sessionManager.getSessionDir(), onProgress),
+						? SessionManager.listAll(onProgress, signal)
+						: SessionManager.listAll(this.sessionManager.getSessionDir(), onProgress, signal),
 				async (sessionPath) => {
 					done();
 					await this.handleResumeSession(sessionPath);
@@ -6750,6 +6892,21 @@ export class InteractiveMode {
 		});
 	}
 
+	private async handleBugCommand(hint: string | undefined): Promise<void> {
+		await reportBug(
+			{
+				session: this.session,
+				ui: this.ui,
+				editorContainer: this.editorContainer,
+				editor: this.editor,
+				keybindings: this.keybindings,
+				showStatus: (message) => this.showStatus(message),
+				showError: (message) => this.showError(message),
+			},
+			hint,
+		);
+	}
+
 	private async handleCopyCommand(
 		options: { flashConfirmation?: boolean; preferSelection?: boolean } = {},
 	): Promise<void> {
@@ -6844,6 +7001,16 @@ export class InteractiveMode {
 		}
 		info += `${theme.fg("dim", "Output:")} ${stats.tokens.output.toLocaleString()}\n`;
 		info += `${theme.fg("dim", "Total:")} ${stats.tokens.total.toLocaleString()}\n`;
+
+		const cacheWarmingStatus = this.session.cacheWarmingStatus;
+		info += `\n${theme.bold("Cache Warming")}\n`;
+		info += `${theme.fg("dim", "Mode:")} ${this.settingsManager.getCacheWarmingMode()}\n`;
+		info += `${theme.fg("dim", "Status:")} ${cacheWarmingStatus ? formatCacheWarmingStatus(cacheWarmingStatus) : "Inactive (cache warming unavailable)"}\n`;
+		const decision = cacheWarmingStatus?.decision;
+		if (decision?.economicsAvailable) {
+			info += `${theme.fg("dim", "Cache miss penalty:")} $${decision.missCost.toFixed(3)}\n`;
+			info += `${theme.fg("dim", "Refresh cost:")} $${decision.warmCost.toFixed(3)}\n`;
+		}
 
 		if (stats.cost > 0 || cacheWaste.missedTokens > 0) {
 			info += `\n${theme.bold("Cost")}\n`;

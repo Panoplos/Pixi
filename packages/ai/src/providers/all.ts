@@ -22,6 +22,7 @@ import { groqProvider } from "./groq.ts";
 import { huggingfaceProvider } from "./huggingface.ts";
 import { incoProvider } from "./inco.ts";
 import { kimiCodingProvider } from "./kimi-coding.ts";
+import { metaProvider } from "./meta.ts";
 import { minimaxProvider } from "./minimax.ts";
 import { minimaxCnProvider } from "./minimax-cn.ts";
 import { mistralProvider } from "./mistral.ts";
@@ -110,6 +111,7 @@ export function builtinProviders(): Provider[] {
 		huggingfaceProvider(),
 		incoProvider(),
 		kimiCodingProvider(),
+		metaProvider(),
 		minimaxProvider(),
 		minimaxCnProvider(),
 		mistralProvider(),
