@@ -112,6 +112,10 @@ export async function suggestNextPrompt(
 ): Promise<string | undefined> {
 	const message = await deps.modelRuntime.completeSimple(deps.model, buildNextPromptContext(input), {
 		maxTokens: SUGGESTION_MAX_TOKENS,
+		// Reasoning models ramble meta-commentary with thinking off and blow the
+		// 64-token budget with higher levels; "low" keeps them on-task. Non-reasoning
+		// models clamp this to "off" via clampThinkingLevel, so behavior is unchanged.
+		reasoning: "low",
 		signal,
 		// One-off call: never pay for cache writes, and use a fresh routing
 		// session so this request never shares or churns the live session's
