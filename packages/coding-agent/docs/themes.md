@@ -167,9 +167,9 @@ The `$schema` field enables editor auto-completion and validation.
 
 ## Color Tokens
 
-Every theme must define all 53 required color tokens. The optional tokens preserve compatibility with existing themes: `thinkingMax` falls back to `thinkingXhigh`, `searchMatchBg` falls back to `selectedBg`, and `searchMatchText` falls back to `text`. Other search matches use `searchMatchText` on `searchMatchBg` with an underline; the current match reverses that foreground/background pair and uses bold text.
+Every theme must define all 53 required color tokens. The optional tokens preserve compatibility with existing themes: `thinkingMax` falls back to `thinkingXhigh`, `searchMatchBg` falls back to `selectedBg`, `searchMatchText` falls back to `text`, and `promptPrefix` falls back to `accent`. Other search matches use `searchMatchText` on `searchMatchBg` with an underline; the current match reverses that foreground/background pair and uses bold text.
 
-### Core UI (13 colors)
+### Core UI (13 required, 1 optional)
 
 | Token | Purpose |
 |-------|---------|
@@ -186,6 +186,7 @@ Every theme must define all 53 required color tokens. The optional tokens preser
 | `thinkingText` | Thinking block text |
 | `scrollbarTrack` | Fullscreen scrollbar track foreground |
 | `scrollbarThumb` | Fullscreen scrollbar thumb foreground, shared by normal and expanded states |
+| `promptPrefix` | Editor prompt prefix; optional, falls back to `accent` |
 
 ### Backgrounds & Content (11 required, 2 optional)
 

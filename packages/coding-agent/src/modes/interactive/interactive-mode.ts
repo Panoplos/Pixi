@@ -637,7 +637,7 @@ export class InteractiveMode {
 		this.defaultEditor = new CustomEditor(this.ui, getEditorTheme(), this.keybindings, {
 			paddingX: editorPaddingX,
 			autocompleteMaxVisible,
-			prefix: "❯ ",
+			prefix: this.settingsManager.getPromptPrefix(),
 			embedWorkingStatus: true,
 		});
 		this.editor = this.defaultEditor;
@@ -2045,9 +2045,11 @@ export class InteractiveMode {
 		const editorPaddingX = this.settingsManager.getEditorPaddingX();
 		const autocompleteMaxVisible = this.settingsManager.getAutocompleteMaxVisible();
 		this.defaultEditor.setPaddingX(editorPaddingX);
+		this.defaultEditor.setPrefix(this.settingsManager.getPromptPrefix());
 		this.defaultEditor.setAutocompleteMaxVisible(autocompleteMaxVisible);
 		if (this.editor !== this.defaultEditor) {
 			this.editor.setPaddingX?.(editorPaddingX);
+			this.editor.setPrefix?.(this.settingsManager.getPromptPrefix());
 			this.editor.setAutocompleteMaxVisible?.(autocompleteMaxVisible);
 		}
 	}

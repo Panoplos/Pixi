@@ -463,6 +463,13 @@ export class Editor implements Component, Focusable {
 		return this.autocompleteMaxVisible;
 	}
 
+	setPrefix(prefix: string): void {
+		if (this.prefix !== prefix) {
+			this.prefix = prefix;
+			this.tui.requestRender();
+		}
+	}
+
 	setAutocompleteMaxVisible(maxVisible: number): void {
 		const newMaxVisible = Number.isFinite(maxVisible) ? Math.max(3, Math.min(20, Math.floor(maxVisible))) : 5;
 		if (this.autocompleteMaxVisible !== newMaxVisible) {

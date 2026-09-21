@@ -88,6 +88,7 @@ Warming needs a known cache lifetime for the model and the retention tier the re
 | `treeFilterMode` | string | `"default"` | Default filter for `/tree`: `"default"`, `"no-tools"`, `"user-only"`, `"labeled-only"`, `"all"` |
 | `suggestions.model` | string | - | `"provider/model"` pattern for the model that generates next-message suggestions. Default: the active session model. Pick from `/settings` → Suggestion model |
 | `editorPaddingX` | number | `0` | Horizontal padding for input editor (0-3) |
+| `promptPrefix` | string | `"❯ "` | Input editor prefix; set to `""` to hide it |
 | `outputPad` | number | `1` | Horizontal padding for user messages, assistant messages, and thinking (0 or 1) |
 | `autocompleteMaxVisible` | number | `5` | Max visible items in autocomplete dropdown (3-20) |
 | `showHardwareCursor` | boolean | `false` | Show the terminal cursor while TUI positions it for IME support |

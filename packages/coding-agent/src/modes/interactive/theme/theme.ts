@@ -338,6 +338,7 @@ export class Theme {
 			thinkingMax: fgColors.thinkingMax ?? fgColors.thinkingXhigh,
 			searchMatchText: fgColors.searchMatchText ?? fgColors.text,
 			toolDiffText: fgColors.toolDiffText ?? fgColors.text,
+			promptPrefix: fgColors.promptPrefix ?? fgColors.accent,
 		};
 		for (const [key, value] of Object.entries(colors) as [ThemeColor, string | number][]) {
 			this.fgColors.set(key, fgAnsi(value, mode));
@@ -1257,6 +1258,7 @@ export function getEditorTheme(): EditorTheme {
 	return {
 		borderColor: (text: string) => theme.fg("borderMuted", text),
 		ghost: (text: string) => theme.fg("muted", text),
+		prefixColor: (text: string) => theme.fg("promptPrefix", text),
 		selectList: getSelectListTheme(),
 	};
 }
