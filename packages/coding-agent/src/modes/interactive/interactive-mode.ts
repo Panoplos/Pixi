@@ -992,7 +992,7 @@ export class InteractiveMode {
 		// Add header with keybindings from config (unless silenced)
 		if (this.options.verbose || !this.settingsManager.getQuietStartup()) {
 			const logo = [
-				...PIXI_BANNER.map((row) => theme.fg("accent", row)),
+				...PIXI_BANNER, // pre-colored rows (own xterm-256 codes)
 				theme.bold(theme.fg("accent", "Pixi")) + theme.fg("dim", ` v${this.version}`),
 			].join("\n");
 
