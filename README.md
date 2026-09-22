@@ -62,7 +62,6 @@ Changes on top of upstream:
 ![Thinking activity while Pixi works](docs/images/thinking-activity.gif)
 
 - **Configurable prompt prefix** — the input editor prefix is a `promptPrefix` setting with a matching optional theme color (falls back to `accent`).
-- **Hidden-thinking label support** — extensions can customize or hide the collapsed "Thought for…" label so thinking runs stay out of the transcript.
 - **Secret masking example** — [`key-guard.ts`](packages/coding-agent/examples/extensions/key-guard.ts) masks API keys, tokens, and PEM blocks before they enter model context.
 
 ## All Packages
