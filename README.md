@@ -29,7 +29,9 @@ To learn more about Pi:
 Changes on top of upstream:
 
 - **Extra providers** — Bitdeer, DeepInfra, and Inco are wired in as first-class providers, with model catalogs seeded from live API data and refreshed by the model generator.
-- **Next-message suggestions** — after each assistant reply, a small model drafts the suggested next prompt, shown as ghost text that fills in word by word; the right arrow accepts it. The suggestion model is configurable (`suggestions.model` in settings) and reasoning models are prompted with low effort so the suggestion stays short.
+- **Next-message suggestions** — after each assistant reply, a small model drafts the suggested next prompt, shown as ghost text that fills in word by word; Tab accepts it. The suggestion model is picked separately from your main model — choose it in `/settings` → Suggestion model, or set `suggestions.model` (a `"provider/model"` string) in `~/.pi/agent/settings.json` — so a fast, cheap model can draft suggestions while your main model does the heavy lifting.
+
+![Ghost-text suggestion filling in as you pause typing](docs/images/suggestions.gif)
 - **Model picker grouped by lab** — `/model` groups models by the company that makes them, and `/thinking` and `/context` let you tune reasoning effort and context display without digging through settings.
 - **Editor UX** — click to position the cursor, drag to select with delete/replace, and pasted images become atomic `[Image N]` markers that move and delete as one unit. Selections copy straight to the system clipboard.
 
