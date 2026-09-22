@@ -128,24 +128,27 @@ describe("thinking indicator streaming", () => {
 		ctx.activeStatusIndicator?.dispose();
 	});
 
-	test("visible text closes the active tool section but thinking does not", async () => {
+	test("visible text and thinking both close the active tool section", async () => {
 		initTheme("dark");
 		const ctx = makeCtx();
 		ctx.streamingComponent = { updateContent: vi.fn() };
 		ctx.finalizeActiveToolSection = vi.fn();
 
 		await handleEvent.call(ctx, ev({ type: "thinking_start", contentIndex: 0, partial: {} as never }));
+		expect(ctx.finalizeActiveToolSection).toHaveBeenCalledOnce();
+
 		await handleEvent.call(
 			ctx,
 			ev({ type: "thinking_end", contentIndex: 0, content: "hidden reasoning", partial: {} as never }),
 		);
-		expect(ctx.finalizeActiveToolSection).not.toHaveBeenCalled();
+		// thinking_end does not finalize again; the split happened at thinking_start.
+		expect(ctx.finalizeActiveToolSection).toHaveBeenCalledOnce();
 
 		await handleEvent.call(
 			ctx,
 			ev({ type: "text_delta", contentIndex: 0, delta: "Visible commentary", partial: {} as never }),
 		);
-		expect(ctx.finalizeActiveToolSection).toHaveBeenCalledOnce();
+		expect(ctx.finalizeActiveToolSection).toHaveBeenCalledTimes(2);
 		ctx.activeStatusIndicator?.dispose();
 	});
 });

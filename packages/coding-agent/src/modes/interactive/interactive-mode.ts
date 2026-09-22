@@ -263,8 +263,11 @@ function isCustomSessionEntry(item: RenderSessionItem): item is Extract<SessionE
 	return "type" in item && item.type === "custom";
 }
 
-function hasVisibleAssistantText(message: AssistantMessage): boolean {
-	return message.content.some((content) => content.type === "text" && content.text.trim());
+/** True when the message carries visible text or a thinking block, so any open aggregate section must split. */
+function splitsAggregateSection(message: AssistantMessage): boolean {
+	return message.content.some(
+		(content) => (content.type === "text" && content.text.trim()) || content.type === "thinking",
+	);
 }
 
 function isCompactionCostNotice(item: RenderSessionItem): item is CompactionCostNotice {
@@ -3559,7 +3562,7 @@ export class InteractiveMode {
 					this.updatePendingMessagesDisplay();
 					this.ui.requestRender();
 				} else if (event.message.role === "assistant") {
-					if (hasVisibleAssistantText(event.message)) {
+					if (splitsAggregateSection(event.message)) {
 						this.finalizeActiveToolSection();
 					}
 					this.streamingComponent = new AssistantMessageComponent(
@@ -3591,6 +3594,9 @@ export class InteractiveMode {
 						this.finalizeActiveToolSection();
 					}
 					if (streamEvent?.type === "thinking_start") {
+						// Thinking between tool rounds splits the aggregate section, so
+						// tool calls on either side are summarized separately.
+						this.finalizeActiveToolSection();
 						if (this.thinkingStartMs !== undefined) {
 							if (this.hideThinkingBlock) this.finalizeThinkingIndicator();
 							else this.thinkingStartMs = undefined;
@@ -4134,7 +4140,7 @@ export class InteractiveMode {
 			const message = item;
 			// Assistant messages need special handling for tool calls
 			if (message.role === "assistant") {
-				if (hasVisibleAssistantText(message)) {
+				if (splitsAggregateSection(message)) {
 					this.finalizeActiveToolSection();
 				}
 				this.addMessageToChat(message);

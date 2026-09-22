@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Fixed tool-activity aggregation accumulating tool calls across thinking blocks; thinking now splits the summary into per-round sections.
 - Fixed idle prompt-cache warming rebuilding expired caches when its timer or an extension decision is delayed.
 - Improved crash diagnostics with hints identifying loaded extensions that appear in the stack trace.
 
