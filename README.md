@@ -24,6 +24,17 @@ To learn more about Pi:
 * [Visit pi.dev](https://pi.dev), the project website with demos
 * [Read the documentation](https://pi.dev/docs/latest), but you can also ask the agent to explain itself
 
+## Enhancements in this fork
+
+Changes on top of upstream:
+
+- **Extra providers** — Bitdeer, DeepInfra, and Inco are wired in as first-class providers, with model catalogs seeded from live API data and refreshed by the model generator.
+- **Next-message suggestions** — after each assistant reply, a small model drafts the suggested next prompt, shown as ghost text in the input editor. The suggestion model is configurable (`suggestions.model` in settings) and reasoning models are prompted with low effort so the suggestion stays short.
+- **Editor UX** — click to position the cursor, drag to select with delete/replace, and pasted images become atomic `[Image N]` markers that move and delete as one unit.
+- **Write/edit previews** — tool previews render proper diffs for file writes and edits.
+- **Configurable prompt prefix** — the input editor prefix is a `promptPrefix` setting with a matching optional theme color (falls back to `accent`).
+- **Secret masking example** — [`key-guard.ts`](packages/coding-agent/examples/extensions/key-guard.ts) masks API keys, tokens, and PEM blocks before they enter model context.
+
 ## All Packages
 
 | Package | Description |
