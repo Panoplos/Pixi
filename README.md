@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/Panoplos/Pixi">
-    <img alt="Pixi logo" src="docs/images/pixi-logo.png" width="128">
+    <img alt="Pixi logo" src="docs/images/pixi-logo.png" width="200">
   </a>
 </p>
 <p align="center">
