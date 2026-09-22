@@ -181,6 +181,7 @@ import { UserMessageSelectorComponent } from "./components/user-message-selector
 import { editInExternalEditor } from "./external-editor.ts";
 import { refreshModelCatalogs } from "./model-catalog-refresh.ts";
 import { getModelSearchText } from "./model-search.ts";
+import { PIXI_BANNER } from "./pixi-banner.ts";
 import { shareSession } from "./session-share.ts";
 import {
 	getAvailableThemes,
@@ -990,7 +991,10 @@ export class InteractiveMode {
 
 		// Add header with keybindings from config (unless silenced)
 		if (this.options.verbose || !this.settingsManager.getQuietStartup()) {
-			const logo = theme.bold(theme.fg("accent", APP_NAME)) + theme.fg("dim", ` v${this.version}`);
+			const logo = [
+				...PIXI_BANNER.map((row) => theme.fg("accent", row)),
+				theme.bold(theme.fg("accent", "Pixi")) + theme.fg("dim", ` v${this.version}`),
+			].join("\n");
 
 			// Build startup instructions using keybinding hint helpers
 			const hint = (keybinding: AppKeybinding, description: string) => keyHint(keybinding, description);
@@ -2135,7 +2139,10 @@ export class InteractiveMode {
 		this.bugReportHintShown = true;
 		this.chatContainer.addChild(
 			new Text(
-				theme.fg("muted", `If this looks like a ${APP_NAME} bug, /bug sends a report to the developers.`),
+				theme.fg(
+					"muted",
+					`If this looks like a Pixi bug, /bug exports a report you can attach to an issue at github.com/Panoplos/Pixi.`,
+				),
 				this.outputPad,
 				0,
 			),
@@ -4998,9 +5005,9 @@ export class InteractiveMode {
 	}
 
 	showNewVersionNotification(release: LatestPiRelease): void {
-		const action = theme.fg("accent", `${APP_NAME} update`);
+		const action = theme.fg("accent", "git pull in your Pixi checkout, then rebuild");
 		const updateInstruction = theme.fg("muted", `New version ${release.version} is available. Run `) + action;
-		const changelogUrl = "https://pi.dev/changelog";
+		const changelogUrl = "https://github.com/Panoplos/Pixi/releases";
 		const changelogLink = getCapabilities().hyperlinks
 			? hyperlink(theme.fg("accent", changelogUrl), changelogUrl)
 			: theme.fg("accent", changelogUrl);
