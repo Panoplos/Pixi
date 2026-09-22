@@ -21,6 +21,23 @@ Pixi is a fork of [earendil-works/pi](https://github.com/earendil-works/pi) — 
 
 Documentation lives in [packages/coding-agent/docs](packages/coding-agent/docs) — you can also ask the agent to explain itself. For the upstream project, see [pi.dev](https://pi.dev).
 
+## Installing Pixi
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Panoplos/Pixi/main/scripts/install.sh | sh
+```
+
+The installer downloads the latest release binary for your platform from the [releases page](https://github.com/Panoplos/Pixi/releases) and installs it as `pixi`.
+
+Until the first release is published, run Pixi from source:
+
+```bash
+git clone https://github.com/Panoplos/Pixi && cd Pixi
+npm install --ignore-scripts
+npm run build
+mkdir -p ~/.local/bin && ln -s "$PWD/packages/coding-agent/dist/bundle/cli.js" ~/.local/bin/pixi
+```
+
 ## Enhancements in this fork
 
 Changes on top of upstream:
@@ -91,8 +108,8 @@ GitHub releases include a versioned source archive covered by the release's `SHA
 
 ```bash
 VERSION="<release-version>"
-tar -xzf "pi-${VERSION}-source.tar.gz"
-cd "pi-${VERSION}"
+tar -xzf "pixi-${VERSION}-source.tar.gz"
+cd "pixi-${VERSION}"
 ./scripts/build-binaries.sh --offline-model-data --platform linux-x64 --out "$PWD/out"
 ```
 

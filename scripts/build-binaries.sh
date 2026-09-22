@@ -128,9 +128,9 @@ for platform in "${PLATFORMS[@]}"; do
     # Disable cwd bunfig.toml autoload so project preload scripts cannot crash the
     # standalone binary before pi starts (see #7684).
     if [[ "$platform" == windows-* ]]; then
-        bun build --compile --no-compile-autoload-bunfig --target="$bun_target" ./dist/bun/cli.js ./src/utils/image-resize-worker.ts --outfile "$OUTPUT_DIR/$platform/pi.exe"
+        bun build --compile --no-compile-autoload-bunfig --target="$bun_target" ./dist/bun/cli.js ./src/utils/image-resize-worker.ts --outfile "$OUTPUT_DIR/$platform/pixi.exe"
     else
-        bun build --compile --no-compile-autoload-bunfig --target="$bun_target" ./dist/bun/cli.js ./src/utils/image-resize-worker.ts --outfile "$OUTPUT_DIR/$platform/pi"
+        bun build --compile --no-compile-autoload-bunfig --target="$bun_target" ./dist/bun/cli.js ./src/utils/image-resize-worker.ts --outfile "$OUTPUT_DIR/$platform/pixi"
     fi
 done
 
@@ -163,12 +163,12 @@ cd "$OUTPUT_DIR"
 for platform in "${PLATFORMS[@]}"; do
     if [[ "$platform" == windows-* ]]; then
         # Windows (zip)
-        echo "Creating pi-$platform.zip..."
-        (cd "$platform" && zip -r ../pi-$platform.zip .)
+        echo "Creating pixi-$platform.zip..."
+        (cd "$platform" && zip -r ../pixi-$platform.zip .)
     else
         # Unix platforms (tar.gz) - use wrapper directory for mise compatibility
-        echo "Creating pi-$platform.tar.gz..."
-        mv "$platform" pi && tar -czf pi-$platform.tar.gz pi && mv pi "$platform"
+        echo "Creating pixi-$platform.tar.gz..."
+        mv "$platform" pixi && tar -czf pixi-$platform.tar.gz pixi && mv pixi "$platform"
     fi
 done
 
@@ -179,7 +179,7 @@ for platform in "${PLATFORMS[@]}"; do
     if [[ "$platform" == windows-* ]]; then
         mkdir -p "$platform" && (cd "$platform" && unzip -q ../pi-$platform.zip)
     else
-        tar -xzf pi-$platform.tar.gz && mv pi "$platform"
+        tar -xzf pixi-$platform.tar.gz && mv pixi "$platform"
     fi
 done
 

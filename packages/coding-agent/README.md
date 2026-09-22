@@ -1,6 +1,6 @@
 <p align="center">
-  <a href="https://pi.dev">
-    <img alt="pi logo" src="https://pi.dev/logo-auto.svg" width="128">
+  <a href="https://github.com/Panoplos/Pixi">
+    <img alt="Pixi logo" src="../docs/images/pixi-logo.png" width="128">
   </a>
 </p>
 <p align="center">
@@ -66,29 +66,29 @@ I regularly publish my own `pi-mono` work sessions here:
 npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 ```
 
-`--ignore-scripts` disables dependency lifecycle scripts during install. Pi does not require install scripts for normal npm installs.
+`--ignore-scripts` disables dependency lifecycle scripts during install. Pixi does not require install scripts for normal npm installs.
 
 Installer alternative:
 
 ```bash
-curl -fsSL https://pi.dev/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Panoplos/Pixi/main/scripts/install.sh | sh
 ```
 
 Authenticate with an API key:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-pi
+pixi
 ```
 
 Or use your existing subscription:
 
 ```bash
-pi
+pixi
 /login  # Then select provider
 ```
 
-Then just talk to pi. By default, pi gives the model four tools: `read`, `write`, `edit`, and `bash`. The model uses these to fulfill your requests. Add capabilities via [skills](#skills), [prompt templates](#prompt-templates), [extensions](#extensions), or [pi packages](#pi-packages).
+Then just talk to Pixi. By default, Pixi gives the model four tools: `read`, `write`, `edit`, and `bash`. The model uses these to fulfill your requests. Add capabilities via [skills](#skills), [prompt templates](#prompt-templates), [extensions](#extensions), or [pi packages](#pi-packages).
 
 **Platform notes:** [Windows](docs/windows.md) | [Termux (Android)](docs/termux.md) | [tmux](docs/tmux.md) | [Terminal setup](docs/terminal-setup.md) | [Shell aliases](docs/shell-aliases.md)
 
