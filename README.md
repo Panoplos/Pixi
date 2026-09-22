@@ -29,10 +29,24 @@ To learn more about Pi:
 Changes on top of upstream:
 
 - **Extra providers** — Bitdeer, DeepInfra, and Inco are wired in as first-class providers, with model catalogs seeded from live API data and refreshed by the model generator.
-- **Next-message suggestions** — after each assistant reply, a small model drafts the suggested next prompt, shown as ghost text in the input editor. The suggestion model is configurable (`suggestions.model` in settings) and reasoning models are prompted with low effort so the suggestion stays short.
-- **Editor UX** — click to position the cursor, drag to select with delete/replace, and pasted images become atomic `[Image N]` markers that move and delete as one unit.
-- **Write/edit previews** — tool previews render proper diffs for file writes and edits.
+- **Next-message suggestions** — after each assistant reply, a small model drafts the suggested next prompt, shown as ghost text that fills in word by word; the right arrow accepts it. The suggestion model is configurable (`suggestions.model` in settings) and reasoning models are prompted with low effort so the suggestion stays short.
+- **Model picker grouped by lab** — `/model` groups models by the company that makes them, and `/thinking` and `/context` let you tune reasoning effort and context display without digging through settings.
+- **Editor UX** — click to position the cursor, drag to select with delete/replace, and pasted images become atomic `[Image N]` markers that move and delete as one unit. Selections copy straight to the system clipboard.
+
+![Drag-selecting and deleting text in the editor](docs/images/editor-selection.gif)
+
+- **Queued messages** — type follow-ups while Pixi is still working; they send in order, images intact.
+- **Write/edit previews** — tool previews render proper diffs for file writes and edits, so you can review changes before they land.
+
+![Write/edit tool preview rendering a diff](docs/images/diff-view.png)
+- **Collapsible activity** — batches of tool calls collapse into one-line summaries ("ran 1 shell command, read 1 file") that expand in place with ctrl+o, and a thinking spinner shows what Pixi is doing between actions.
+
+![Collapsed action details expand in place with ctrl+o](docs/images/aggregate-details.png)
+
+![Thinking activity while Pixi works](docs/images/thinking-activity.gif)
+
 - **Configurable prompt prefix** — the input editor prefix is a `promptPrefix` setting with a matching optional theme color (falls back to `accent`).
+- **Hidden-thinking label support** — extensions can customize or hide the collapsed "Thought for…" label so thinking runs stay out of the transcript.
 - **Secret masking example** — [`key-guard.ts`](packages/coding-agent/examples/extensions/key-guard.ts) masks API keys, tokens, and PEM blocks before they enter model context.
 
 ## All Packages
