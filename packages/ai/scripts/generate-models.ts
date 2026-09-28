@@ -2239,9 +2239,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 			for (const [modelId, model] of Object.entries(data[variant.key].models)) {
 				const m = model as ModelsDevModel;
 				if (m.tool_call !== true) continue;
-				// ponytail: keep opencode-go kimi-k2.6 despite models.dev deprecating it — upstream tests and
-				// fork compat tweaks still target it; drop this exception when upstream updates its tests.
-				if (m.status === "deprecated" && !(variant.provider === "opencode-go" && modelId === "kimi-k2.6")) continue;
+				if (m.status === "deprecated") continue;
 
 				const npm = m.provider?.npm;
 				let api: Api;
@@ -2273,7 +2271,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					compat = { ...(compat ?? {}), supportsReasoningEffort: false };
 				}
 
-				if ((variant.provider === "opencode" || variant.provider === "opencode-go") && modelId === "kimi-k2.6") {
+				if (variant.provider === "opencode" && modelId === "kimi-k2.6") {
 					// OpenCode Kimi K2.6 accepts Anthropic-style thinking objects
 					// and rejects string thinking values or combined reasoning_effort.
 					compat = { ...(compat ?? {}), thinkingFormat: "deepseek", supportsReasoningEffort: false };

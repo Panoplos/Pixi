@@ -2,6 +2,9 @@
 	"name": "pi-monorepo",
 	"private": true,
 	"type": "module",
+	"pi": {
+		"extensions": ["./packages/coding-agent/examples/extensions/destructive-tool-guard.ts"]
+	},
 	"workspaces": [
 		"packages/*",
 		"packages/session-backends/*",
