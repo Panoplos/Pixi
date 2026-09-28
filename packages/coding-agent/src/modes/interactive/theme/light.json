@@ -4,6 +4,7 @@
 	"appearance": "light",
 	"vars": {
 		"violet": "#8250df",
+		"muted": "okhsl(229 8% 47%)",
 		"teal": "#5a8080",
 		"blue": "#547da7",
 		"green": "#588458",
@@ -84,7 +85,7 @@
 		"thinkingXhigh": "#8b008b",
 		"thinkingMax": "#af005f",
 
-		"bashMode": "green",
+		"bashMode": "yellow",
 		"footerPath": "#b4531c",
 		"footerBranch": "green",
 		"footerCache": "text",
