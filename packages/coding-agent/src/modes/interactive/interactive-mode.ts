@@ -266,12 +266,6 @@ function isCustomSessionEntry(item: RenderSessionItem): item is Extract<SessionE
 }
 
 /** True when the message carries visible text or a thinking block, so any open aggregate section must split. */
-function splitsAggregateSection(message: AssistantMessage): boolean {
-	return message.content.some(
-		(content) => (content.type === "text" && content.text.trim()) || content.type === "thinking",
-	);
-}
-
 function isCompactionCostNotice(item: RenderSessionItem): item is CompactionCostNotice {
 	return "type" in item && item.type === "compaction_cost";
 }
@@ -533,6 +527,7 @@ export class InteractiveMode {
 
 	// Track if editor is in bash mode (text starts with !)
 	private isBashMode = false;
+	private lastEditorText = "";
 
 	// Track current bash execution component
 	private bashComponent: BashExecutionComponent | undefined = undefined;
@@ -2043,12 +2038,13 @@ export class InteractiveMode {
 		}
 		const editorPaddingX = this.settingsManager.getEditorPaddingX();
 		const autocompleteMaxVisible = this.settingsManager.getAutocompleteMaxVisible();
+		const prefix = this.isBashMode ? "! " : this.settingsManager.getPromptPrefix();
 		this.defaultEditor.setPaddingX(editorPaddingX);
-		this.defaultEditor.setPrefix(this.settingsManager.getPromptPrefix());
+		this.defaultEditor.setPrefix(prefix);
 		this.defaultEditor.setAutocompleteMaxVisible(autocompleteMaxVisible);
 		if (this.editor !== this.defaultEditor) {
 			this.editor.setPaddingX?.(editorPaddingX);
-			this.editor.setPrefix?.(this.settingsManager.getPromptPrefix());
+			this.editor.setPrefix?.(prefix);
 			this.editor.setAutocompleteMaxVisible?.(autocompleteMaxVisible);
 		}
 	}
@@ -2947,6 +2943,7 @@ export class InteractiveMode {
 			this.defaultEditor.setText(currentText);
 			this.editor = this.defaultEditor;
 		}
+		this.updateBashModeChrome();
 
 		this.editorContainer.addChild(this.editor as Component);
 		if (this.activeStatusIndicator) {
@@ -3084,9 +3081,8 @@ export class InteractiveMode {
 			} else if (this.session.isBashRunning) {
 				this.session.abortBash();
 			} else if (this.isBashMode) {
+				this.exitBashMode();
 				this.editor.setText("");
-				this.isBashMode = false;
-				this.updateEditorBorderColor();
 			} else if (!this.editor.getText().trim()) {
 				// Double-escape with empty editor triggers /tree, /fork, or nothing based on setting
 				const action = this.settingsManager.getDoubleEscapeAction();
@@ -3134,9 +3130,21 @@ export class InteractiveMode {
 
 		this.defaultEditor.onChange = (text: string) => {
 			const wasBashMode = this.isBashMode;
-			this.isBashMode = text.trimStart().startsWith("!");
+			const previousText = this.lastEditorText;
+			this.lastEditorText = text;
+
+			if (!wasBashMode && text === "!") {
+				// Entering bash mode: the "!" is consumed and shown as the prompt prefix.
+				this.isBashMode = true;
+				this.editor.setText("");
+			} else if (wasBashMode && text === "" && previousText === "") {
+				// Backspace fires onChange even when nothing is deleted, so an empty-to-empty
+				// transition can only be backspace at the start: cancel bash mode.
+				this.isBashMode = false;
+			}
+
 			if (wasBashMode !== this.isBashMode) {
-				this.updateEditorBorderColor();
+				this.updateBashModeChrome();
 			}
 		};
 
@@ -3415,22 +3423,24 @@ export class InteractiveMode {
 				return;
 			}
 
-			// Handle bash command (! for normal, !! for excluded from context)
-			if (text.startsWith("!")) {
-				const isExcluded = text.startsWith("!!");
-				const command = isExcluded ? text.slice(2).trim() : text.slice(1).trim();
+			// Handle bash command (bash mode, or a pasted "!"/"!!" prefix when not in it)
+			if (this.isBashMode || text.startsWith("!")) {
+				const isExcluded = this.isBashMode ? text.startsWith("!") : text.startsWith("!!");
+				const command = this.isBashMode
+					? (isExcluded ? text.slice(1) : text).trim()
+					: text.slice(isExcluded ? 2 : 1).trim();
 				if (command) {
 					if (this.session.isBashRunning) {
 						this.showWarning("A bash command is already running. Press Esc to cancel it first.");
-						this.editor.setText(text);
+						if (!this.isBashMode) this.editor.setText(text);
 						return;
 					}
-					this.editor.addToHistory?.(text);
+					this.editor.addToHistory?.(this.isBashMode ? (isExcluded ? "!!" : "!") + command : text);
 					await this.handleBashCommand(command, isExcluded);
-					this.isBashMode = false;
-					this.updateEditorBorderColor();
+					this.exitBashMode();
 					return;
 				}
+				if (this.isBashMode) return;
 			}
 
 			// Queue input during compaction (extension commands execute immediately)
@@ -3588,9 +3598,6 @@ export class InteractiveMode {
 					this.updatePendingMessagesDisplay();
 					this.ui.requestRender();
 				} else if (event.message.role === "assistant") {
-					if (splitsAggregateSection(event.message)) {
-						this.finalizeActiveToolSection();
-					}
 					this.streamingComponent = new AssistantMessageComponent(
 						undefined,
 						this.hideThinkingBlock,
@@ -3613,16 +3620,9 @@ export class InteractiveMode {
 
 					// Drive the live thinking indicator from the stream markers.
 					const streamEvent = event.assistantMessageEvent;
-					if (
-						(streamEvent?.type === "text_delta" && streamEvent.delta.trim()) ||
-						(streamEvent?.type === "text_end" && streamEvent.content.trim())
-					) {
-						this.finalizeActiveToolSection();
-					}
+					// Thinking and assistant commentary do NOT split the aggregate section:
+					// tool runs within one assistant phase accumulate into a single group.
 					if (streamEvent?.type === "thinking_start") {
-						// Thinking between tool rounds splits the aggregate section, so
-						// tool calls on either side are summarized separately.
-						this.finalizeActiveToolSection();
 						if (this.thinkingStartMs !== undefined) {
 							if (this.hideThinkingBlock) this.finalizeThinkingIndicator();
 							else this.thinkingStartMs = undefined;
@@ -4169,9 +4169,6 @@ export class InteractiveMode {
 			const message = item;
 			// Assistant messages need special handling for tool calls
 			if (message.role === "assistant") {
-				if (splitsAggregateSection(message)) {
-					this.finalizeActiveToolSection();
-				}
 				this.addMessageToChat(message);
 				// Render tool calls into the active aggregate section (write/edit standalone).
 				for (const content of message.content) {
@@ -4444,6 +4441,7 @@ export class InteractiveMode {
 		if (now - this.lastSigintTime < 500) {
 			void this.shutdown();
 		} else {
+			this.exitBashMode();
 			this.clearEditor();
 			this.lastSigintTime = now;
 		}
@@ -4694,6 +4692,20 @@ export class InteractiveMode {
 		}
 		this.activeStatusIndicator?.invalidate();
 		this.ui.requestRender();
+	}
+
+	private exitBashMode(): void {
+		if (!this.isBashMode) return;
+		this.isBashMode = false;
+		this.updateBashModeChrome();
+	}
+
+	/** Apply bash-mode chrome to the active editor: "!" prefix in the bashMode color plus the border. */
+	private updateBashModeChrome(): void {
+		const prefix = this.isBashMode ? "! " : this.settingsManager.getPromptPrefix();
+		this.editor.setPrefix?.(prefix);
+		this.editor.setPrefixColor?.(this.isBashMode ? (str: string) => theme.fg("bashMode", str) : undefined);
+		this.updateEditorBorderColor();
 	}
 
 	private cycleThinkingLevel(): void {

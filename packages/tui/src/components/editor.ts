@@ -472,6 +472,15 @@ export class Editor implements Component, Focusable {
 		}
 	}
 
+	/** Override the prefix color (e.g. bash mode). Pass undefined to restore the theme's prefix color. */
+	setPrefixColor(color: ((str: string) => string) | undefined): void {
+		const next = color ?? this.theme.prefixColor ?? ((str: string) => str);
+		if (this.prefixColor !== next) {
+			this.prefixColor = next;
+			this.tui.requestRender();
+		}
+	}
+
 	setAutocompleteMaxVisible(maxVisible: number): void {
 		const newMaxVisible = Number.isFinite(maxVisible) ? Math.max(3, Math.min(20, Math.floor(maxVisible))) : 5;
 		if (this.autocompleteMaxVisible !== newMaxVisible) {

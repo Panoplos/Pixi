@@ -18,9 +18,11 @@ export interface ToolActivitySummaryOptions {
 
 /**
  * A collapsible aggregate of one tool-activity section: an ordered run of tool
- * calls with no visible commentary between them. Collapsed it shows a single
- * summary line (e.g. `Committed 9be7da6, read 1 file, ran 3 shell commands`);
- * expanded it reveals the full per-tool `ToolExecutionComponent`s.
+ * calls within one assistant phase (broken only by user turns and standalone
+ * write/edit blocks). Thinking and commentary between tool calls stay inside
+ * the section. Collapsed it shows a single summary line (e.g.
+ * `Committed 9be7da6, read 1 file, ran 3 shell commands`); expanded it reveals
+ * the full per-tool `ToolExecutionComponent`s.
  *
  * It accepts the same per-tool mutations as `ToolExecutionComponent` and routes
  * them to the matching inner execution, so callers can treat it as a drop-in
