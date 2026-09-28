@@ -3,6 +3,11 @@ import type { Model, OpenAICompletionsCompat, ThinkingLevelMap } from "../types.
 export const BITDEER_BASE_URL = "https://api-inference.bitdeer.ai/v1";
 export const BITDEER_MODELS_URL = `${BITDEER_BASE_URL}/models`;
 
+// Bitdeer's key-gated /v1/models endpoint serves bare ids with no metadata. The public website API
+// is the only source of per-model limits (maxContextLen, maxOutputTokens) and reseller pricing.
+export const BITDEER_SITE_LIST_URL = "https://www.bitdeer.ai/api/model/v1/ListModels";
+const BITDEER_SITE_MODEL_URL = "https://www.bitdeer.ai/api/model/v1/GetModel";
+
 const BITDEER_COMPAT = {
 	supportsStore: false,
 	supportsDeveloperRole: false,
@@ -65,10 +70,9 @@ function isChatModelId(id: string): boolean {
 	return !/^(seedream|reranker)/i.test(id.split("/").pop() ?? id);
 }
 
-/** Chat models measured on the live `/v1/models` endpoint. Used when generate-models has no API
- * key and as metadata for live IDs. Costs/context are vendor-family reference numbers from the
- * models' own upstream prices, not Bitdeer's reseller pricing - regenerate with a BITDEER_API_KEY
- * to replace them with live metadata. */
+/** Chat models measured on Bitdeer's public site API (ListModels + GetModel per model). Used when
+ * generate-models or refresh has no API key, and as fallback when live fetches fail. Do not substitute
+ * vendor reference numbers: Bitdeer caps context (e.g. 256K for GLM-5.3/Kimi-K3) and prices at its own rates. */
 export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 	return [
 		bitdeerModel({
@@ -76,35 +80,35 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			name: "DeepSeek V4.1 Flash",
 			reasoning: true,
 			input: ["text"],
-			cost: { input: 0.14, output: 0.28, cacheRead: 0.0028, cacheWrite: 0 },
-			contextWindow: 1_000_000,
-			maxTokens: 384_000,
+			cost: { input: 15, output: 120, cacheRead: 0.3, cacheWrite: 0 },
+			contextWindow: 1_048_576,
+			maxTokens: 393_216,
 		}),
 		bitdeerModel({
 			id: "deepseek-ai/DeepSeek-V4-Flash",
 			name: "DeepSeek V4 Flash",
 			reasoning: true,
 			input: ["text"],
-			cost: { input: 0.3, output: 1.2, cacheRead: 0.006, cacheWrite: 0 },
-			contextWindow: 1_000_000,
-			maxTokens: 384_000,
+			cost: { input: 14, output: 28, cacheRead: 1, cacheWrite: 0 },
+			contextWindow: 1_048_576,
+			maxTokens: 393_216,
 		}),
 		bitdeerModel({
 			id: "zai-org/GLM-5.3",
 			name: "GLM 5.3",
 			reasoning: true,
 			input: ["text"],
-			cost: { input: 1.4, output: 4.4, cacheRead: 0.26, cacheWrite: 0 },
-			contextWindow: 1_048_575,
-			maxTokens: 943_717,
+			cost: { input: 140, output: 440, cacheRead: 14, cacheWrite: 0 },
+			contextWindow: 262_144,
+			maxTokens: 131_072,
 		}),
 		bitdeerModel({
 			id: "zai-org/GLM-5.3-Flash",
 			name: "GLM 5.3 Flash",
 			reasoning: true,
 			input: ["text", "image"],
-			cost: { input: 0.15, output: 0.5, cacheRead: 0.03, cacheWrite: 0 },
-			contextWindow: 1_048_576,
+			cost: { input: 7.5, output: 25, cacheRead: 1.5, cacheWrite: 0 },
+			contextWindow: 262_144,
 			maxTokens: 131_072,
 		}),
 		bitdeerModel({
@@ -112,16 +116,16 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			name: "Kimi K3",
 			reasoning: true,
 			input: ["text", "image"],
-			cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 0 },
-			contextWindow: 1_048_576,
-			maxTokens: 131_072,
+			cost: { input: 266, output: 1330, cacheRead: 27.55, cacheWrite: 0 },
+			contextWindow: 262_144,
+			maxTokens: 1_048_576,
 		}),
 		bitdeerModel({
 			id: "Qwen/Qwen3.8-27B",
 			name: "Qwen3.8 27B",
 			reasoning: true,
 			input: ["text", "image"],
-			cost: { input: 0.214, output: 2.55, cacheRead: 0.15, cacheWrite: 0 },
+			cost: { input: 40, output: 240, cacheRead: 8, cacheWrite: 0 },
 			contextWindow: 262_144,
 			maxTokens: 131_072,
 		}),
@@ -169,6 +173,67 @@ function parseBitdeerChatModel(
 	});
 }
 
+/** Live ids can differ from site names by a dated suffix, e.g. `DeepSeek-V4-Flash` vs `DeepSeek-V4-Flash(0731)`. */
+function siteModelKey(name: string): string {
+	return name.split("(")[0]?.trim().toLowerCase() ?? name.toLowerCase();
+}
+
+interface BitdeerSiteModelMeta {
+	contextWindow: number;
+	maxTokens: number;
+	cost: Model<"openai-completions">["cost"];
+	hasVision: boolean;
+}
+
+async function postJson(url: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
+	const response = await fetch(url, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(body),
+		signal,
+	});
+	if (!response.ok) throw new Error(`Bitdeer site API returned ${response.status}`);
+	return response.json();
+}
+
+/** Fetch per-model limits and reseller pricing from Bitdeer's public website API. */
+export async function fetchBitdeerSiteModelMeta(signal?: AbortSignal): Promise<Map<string, BitdeerSiteModelMeta>> {
+	const list = await postJson(BITDEER_SITE_LIST_URL, {}, signal);
+	if (!isRecord(list) || !Array.isArray(list.models)) throw new Error("Unexpected Bitdeer site model list");
+	const meta = new Map<string, BitdeerSiteModelMeta>();
+	await Promise.all(
+		list.models.map(async (raw) => {
+			if (!isRecord(raw) || typeof raw.name !== "string" || typeof raw.modelId !== "string") return;
+			const detail = await postJson(BITDEER_SITE_MODEL_URL, { modelId: raw.modelId }, signal);
+			if (!isRecord(detail)) return;
+			const tags = Array.isArray(detail.tags) ? detail.tags : [];
+			meta.set(siteModelKey(raw.name), {
+				contextWindow: finiteNumber(detail.maxContextLen, 0),
+				maxTokens: finiteNumber(detail.maxOutputTokens, 0),
+				cost: {
+					input: round4(finiteNumber(detail.inputPrice, 0)),
+					output: round4(finiteNumber(detail.outputPrice, 0)),
+					cacheRead: round4(finiteNumber(detail.cachedInputPrice, 0)),
+					cacheWrite: 0,
+				},
+				hasVision: tags.some((tag) => isRecord(tag) && tag.tagId === "image-to-text"),
+			});
+		}),
+	);
+	return meta;
+}
+
+function applyBitdeerSiteMeta(models: Model<"openai-completions">[], meta: Map<string, BitdeerSiteModelMeta>): void {
+	for (const model of models) {
+		const site = meta.get(siteModelKey(model.id));
+		if (!site) continue;
+		if (site.contextWindow > 0) model.contextWindow = site.contextWindow;
+		if (site.maxTokens > 0) model.maxTokens = site.maxTokens;
+		if (site.cost.input > 0 || site.cost.output > 0) model.cost = site.cost;
+		if (site.hasVision) model.input = ["text", "image"];
+	}
+}
+
 /** Map Bitdeer's `/v1/models` payload to chat-capable pi models. */
 export function parseBitdeerChatModels(value: unknown): Model<"openai-completions">[] {
 	if (!isRecord(value) || !Array.isArray(value.data)) return [];
@@ -186,16 +251,22 @@ export interface FetchBitdeerChatModelsOptions {
 	signal?: AbortSignal;
 }
 
-/** Bitdeer's model catalog requires an API key. Without one, the documented seed catalog is returned. */
+/** With an API key, ids come from the key-gated `/v1/models` endpoint and limits/pricing from the
+ * public site API (best effort - seeds are the fallback). Without one, the measured seed catalog is returned. */
 export async function fetchBitdeerChatModels(
 	options: FetchBitdeerChatModelsOptions = {},
 ): Promise<Model<"openai-completions">[]> {
 	if (!options.apiKey) return getBitdeerSeedModels();
-	const response = await fetch(BITDEER_MODELS_URL, {
-		headers: { authorization: `Bearer ${options.apiKey}` },
-		signal: options.signal,
-	});
+	const [response, siteMeta] = await Promise.all([
+		fetch(BITDEER_MODELS_URL, {
+			headers: { authorization: `Bearer ${options.apiKey}` },
+			signal: options.signal,
+		}),
+		fetchBitdeerSiteModelMeta(options.signal).catch(() => undefined),
+	]);
 	if (!response.ok) throw new Error(`Bitdeer API returned ${response.status}`);
 	const models = parseBitdeerChatModels(await response.json());
-	return models.length > 0 ? models : getBitdeerSeedModels();
+	if (models.length === 0) return getBitdeerSeedModels();
+	if (siteMeta) applyBitdeerSiteMeta(models, siteMeta);
+	return models;
 }

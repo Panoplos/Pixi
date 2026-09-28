@@ -3,7 +3,12 @@ import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
 import { createModels } from "../src/models.ts";
 import { InMemoryModelsStore } from "../src/models-store.ts";
 import { bitdeerProvider } from "../src/providers/bitdeer.ts";
-import { BITDEER_MODELS_URL, getBitdeerSeedModels, parseBitdeerChatModels } from "../src/providers/bitdeer-catalog.ts";
+import {
+	BITDEER_MODELS_URL,
+	BITDEER_SITE_LIST_URL,
+	getBitdeerSeedModels,
+	parseBitdeerChatModels,
+} from "../src/providers/bitdeer-catalog.ts";
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -32,6 +37,12 @@ describe("Bitdeer catalog", () => {
 				supportsDeveloperRole: false,
 				maxTokensField: "max_tokens",
 			},
+		});
+		// Seed limits/prices are measured values from Bitdeer's site API, not vendor reference numbers.
+		expect(models[0]).toMatchObject({
+			contextWindow: 1_048_576,
+			maxTokens: 393_216,
+			cost: { input: 15, output: 120 },
 		});
 	});
 
@@ -82,11 +93,29 @@ describe("Bitdeer catalog", () => {
 
 	it("refreshes the provider catalog from the Bitdeer models endpoint with a credential", async () => {
 		vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-			expect(String(input)).toBe(BITDEER_MODELS_URL);
-			expect(new Headers(init?.headers).get("authorization")).toBe("Bearer sk-bitdeer-test");
-			return new Response(JSON.stringify({ data: [{ id: "moonshotai/Kimi-K3", name: "Kimi K3" }] }), {
-				status: 200,
-			});
+			const url = String(input);
+			if (url === BITDEER_MODELS_URL) {
+				expect(new Headers(init?.headers).get("authorization")).toBe("Bearer sk-bitdeer-test");
+				return new Response(JSON.stringify({ data: [{ id: "moonshotai/Kimi-K3", name: "Kimi K3" }] }), {
+					status: 200,
+				});
+			}
+			if (url === BITDEER_SITE_LIST_URL) {
+				return new Response(JSON.stringify({ models: [{ modelId: "mdl-kimi", name: "moonshotai/Kimi-K3" }] }), {
+					status: 200,
+				});
+			}
+			return new Response(
+				JSON.stringify({
+					maxContextLen: 300_000,
+					maxOutputTokens: 40_000,
+					inputPrice: 12.5,
+					outputPrice: 50,
+					cachedInputPrice: 1.25,
+					tags: [{ tagId: "image-to-text" }],
+				}),
+				{ status: 200 },
+			);
 		});
 
 		const credentials = new InMemoryCredentialStore();
@@ -96,14 +125,19 @@ describe("Bitdeer catalog", () => {
 		models.setProvider(bitdeerProvider());
 
 		expect(models.getModel("bitdeer", "moonshotai/Kimi-K3")).toMatchObject({
-			cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 0 },
-			contextWindow: 1_048_576,
+			cost: { input: 266, output: 1330, cacheRead: 27.55, cacheWrite: 0 },
+			contextWindow: 262_144,
+			maxTokens: 1_048_576,
 		});
 		expect((await models.refresh({ providers: ["bitdeer"] })).errors.size).toBe(0);
+		// Live site metadata replaces the seeded limits and pricing.
 		expect(models.getModel("bitdeer", "moonshotai/Kimi-K3")).toMatchObject({
 			name: "Kimi K3",
 			reasoning: true,
 			input: ["text", "image"],
+			contextWindow: 300_000,
+			maxTokens: 40_000,
+			cost: { input: 12.5, output: 50, cacheRead: 1.25, cacheWrite: 0 },
 		});
 		// The dynamic catalog replaces the refreshed list; static seed entries stay registered.
 		expect((await modelsStore.read("bitdeer"))?.models.map((model) => model.id)).toEqual(["moonshotai/Kimi-K3"]);
