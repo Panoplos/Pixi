@@ -15,7 +15,7 @@
 
 - Switched the build from the TypeScript native preview to TypeScript 7.0 with an ES2024 target, and replaced `tsx` with Node's built-in type stripping for running from source ([#9965](https://github.com/earendil-works/pi/issues/9965)).
 - Removed the `[Themes]` section from the startup banner. Custom themes remain available in `/settings`, and theme conflicts are still reported.
-- Tool-activity aggregate sections now span thinking blocks and assistant commentary, accumulating all tool calls in one assistant phase into a single summary. Sections break only on user turns and standalone write/edit tools.
+- Tool-activity aggregate sections no longer split on assistant commentary; they break on thinking blocks, user turns, and standalone write/edit tools. Image attach notices now show as a transient toast instead of persisting in the chat history.
 
 ### Fixed
 

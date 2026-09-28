@@ -44,8 +44,8 @@ describe("InteractiveMode restored activity boundaries", () => {
 		return finalizeActiveToolSection;
 	}
 
-	it("splits on visible text and on thinking", () => {
-		expect(render(fauxAssistantMessage("Visible commentary"))).toHaveBeenCalledTimes(2);
+	it("splits on thinking but not on visible text", () => {
+		expect(render(fauxAssistantMessage("Visible commentary"))).toHaveBeenCalledTimes(1);
 		expect(render(fauxAssistantMessage(fauxThinking("Hidden reasoning")))).toHaveBeenCalledTimes(2);
 	});
 });

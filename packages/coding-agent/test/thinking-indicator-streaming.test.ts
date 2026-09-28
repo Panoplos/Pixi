@@ -128,7 +128,7 @@ describe("thinking indicator streaming", () => {
 		ctx.activeStatusIndicator?.dispose();
 	});
 
-	test("visible text and thinking both close the active tool section", async () => {
+	test("thinking closes the active tool section; visible text does not", async () => {
 		initTheme("dark");
 		const ctx = makeCtx();
 		ctx.streamingComponent = { updateContent: vi.fn() };
@@ -148,7 +148,8 @@ describe("thinking indicator streaming", () => {
 			ctx,
 			ev({ type: "text_delta", contentIndex: 0, delta: "Visible commentary", partial: {} as never }),
 		);
-		expect(ctx.finalizeActiveToolSection).toHaveBeenCalledTimes(2);
+		// Assistant commentary no longer splits the section.
+		expect(ctx.finalizeActiveToolSection).toHaveBeenCalledOnce();
 		ctx.activeStatusIndicator?.dispose();
 	});
 });

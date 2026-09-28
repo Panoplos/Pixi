@@ -265,7 +265,11 @@ function isCustomSessionEntry(item: RenderSessionItem): item is Extract<SessionE
 	return "type" in item && item.type === "custom";
 }
 
-/** True when the message carries visible text or a thinking block, so any open aggregate section must split. */
+/** True when the message carries a thinking block, so any open aggregate section must split. */
+function messageHasThinking(message: AgentMessage): boolean {
+	return message.role === "assistant" && message.content.some((content) => content.type === "thinking");
+}
+
 function isCompactionCostNotice(item: RenderSessionItem): item is CompactionCostNotice {
 	return "type" in item && item.type === "compaction_cost";
 }
@@ -3234,7 +3238,7 @@ export class InteractiveMode {
 				// Ignore re-pastes of an image that is already attached.
 				const hash = crypto.createHash("sha256").update(image.bytes).digest("hex");
 				if ([...this.pendingImageAttachments.values()].some((a) => a.hash === hash)) {
-					this.showStatus("Image is already attached");
+					this.flashToast("Image is already attached");
 					return;
 				}
 
@@ -3250,7 +3254,7 @@ export class InteractiveMode {
 					this.editor.insertTextAtCursor?.(filePath);
 				} else {
 					this.pendingImageAttachments.set(markerId, { path: filePath, hash });
-					this.showStatus(`[Image ${markerId}] attached`);
+					this.flashToast(`[Image ${markerId}] attached`);
 				}
 				this.ui.requestRender();
 				return;
@@ -3620,9 +3624,10 @@ export class InteractiveMode {
 
 					// Drive the live thinking indicator from the stream markers.
 					const streamEvent = event.assistantMessageEvent;
-					// Thinking and assistant commentary do NOT split the aggregate section:
-					// tool runs within one assistant phase accumulate into a single group.
+					// Thinking splits the aggregate section (tool runs between thoughts are
+					// summarized separately); assistant commentary does not.
 					if (streamEvent?.type === "thinking_start") {
+						this.finalizeActiveToolSection();
 						if (this.thinkingStartMs !== undefined) {
 							if (this.hideThinkingBlock) this.finalizeThinkingIndicator();
 							else this.thinkingStartMs = undefined;
@@ -4169,6 +4174,10 @@ export class InteractiveMode {
 			const message = item;
 			// Assistant messages need special handling for tool calls
 			if (message.role === "assistant") {
+				// Thinking splits the aggregate section (matches the live path).
+				if (messageHasThinking(message)) {
+					this.finalizeActiveToolSection();
+				}
 				this.addMessageToChat(message);
 				// Render tool calls into the active aggregate section (write/edit standalone).
 				for (const content of message.content) {

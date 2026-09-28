@@ -11,10 +11,8 @@ import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode
 import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 
-// Regression test: thinking blocks and assistant commentary between tool calls
-// must NOT split the aggregate section — tool runs within one assistant phase
-// accumulate into a single group. Sections break only on user turns and
-// standalone (write/edit) tools.
+// Regression test: aggregate sections split on thinking blocks and standalone
+// (write/edit) tools, but NOT on assistant commentary between tool calls.
 
 const EMPTY_USAGE: Usage = {
 	input: 0,
@@ -211,12 +209,40 @@ function aggregateSummaries(container: Container): string[] {
 	return summaries;
 }
 
-describe("tool aggregation spans thinking and commentary", () => {
+describe("tool aggregation splits on thinking, not commentary", () => {
 	beforeAll(() => {
 		initTheme("dark");
 	});
 
-	test("replay: tool runs across thinking and text rounds aggregate into one section", () => {
+	test("replay: tool runs across text-only commentary aggregate into one section", () => {
+		const fakeThis = createFakeInteractiveModeThis();
+		const renderSessionEntries = (
+			InteractiveMode.prototype as unknown as { renderSessionEntries: RenderSessionEntries }
+		).renderSessionEntries;
+
+		renderSessionEntries.call(
+			fakeThis,
+			createSessionEntries([
+				createThinkingThenToolCallMessage(`call-${++callCounter}`),
+				createToolResultMessage(`call-${callCounter}`, "one"),
+				createAssistantMessage([
+					{ type: "text", text: "Interim commentary between tool calls." },
+					{ type: "toolCall", id: `call-${++callCounter}`, name: "bash", arguments: { command: "echo two" } },
+				]),
+				createToolResultMessage(`call-${callCounter}`, "two"),
+				createAssistantMessage([
+					{ type: "toolCall", id: `call-${++callCounter}`, name: "bash", arguments: { command: "echo three" } },
+				]),
+				createToolResultMessage(`call-${callCounter}`, "three"),
+			]),
+		);
+
+		const summaries = aggregateSummaries(fakeThis.chatContainer);
+		expect(summaries.length).toBe(1);
+		expect(summaries[0]).toContain("ran 3 shell commands");
+	});
+
+	test("replay: thinking between tool rounds starts a new section", () => {
 		const fakeThis = createFakeInteractiveModeThis();
 		const renderSessionEntries = (
 			InteractiveMode.prototype as unknown as { renderSessionEntries: RenderSessionEntries }
@@ -229,17 +255,14 @@ describe("tool aggregation spans thinking and commentary", () => {
 				createToolResultMessage(`call-${callCounter}`, "one"),
 				createThinkingThenToolCallMessage(`call-${++callCounter}`),
 				createToolResultMessage(`call-${callCounter}`, "two"),
-				createAssistantMessage([
-					{ type: "text", text: "Interim commentary between tool calls." },
-					{ type: "toolCall", id: `call-${++callCounter}`, name: "bash", arguments: { command: "echo three" } },
-				]),
-				createToolResultMessage(`call-${callCounter}`, "three"),
 			]),
 		);
 
 		const summaries = aggregateSummaries(fakeThis.chatContainer);
-		expect(summaries.length).toBe(1);
-		expect(summaries[0]).toContain("ran 3 shell commands");
+		expect(summaries.length).toBe(2);
+		for (const summary of summaries) {
+			expect(summary).toContain("ran 1 shell command");
+		}
 	});
 
 	test("replay: standalone write tool starts a new section", () => {
@@ -275,7 +298,7 @@ describe("tool aggregation spans thinking and commentary", () => {
 		}
 	});
 
-	test("live: thinking_start between tool rounds keeps the section open", async () => {
+	test("live: thinking_start between tool rounds splits the section", async () => {
 		const fakeThis = createFakeInteractiveModeThis();
 		const handleEvent = (InteractiveMode.prototype as unknown as { handleEvent: HandleEvent }).handleEvent;
 
@@ -320,7 +343,7 @@ describe("tool aggregation spans thinking and commentary", () => {
 			assistantMessageEvent: { type: "thinking_start", contentIndex: 0, partial: createAssistantMessage([]) },
 		} as unknown as AgentSessionEvent);
 
-		// The section must stay open: the new tool call joins the existing one.
+		// The thinking split closed the first section; the new tool call opens a second.
 		await handleEvent.call(fakeThis, {
 			type: "message_update",
 			message: createAssistantMessage([
@@ -337,7 +360,6 @@ describe("tool aggregation spans thinking and commentary", () => {
 		} as unknown as AgentSessionEvent);
 
 		const sections = fakeThis.getAggregateSections();
-		expect(sections.length).toBe(1);
-		expect(sections[0]).toBe(fakeThis.activeToolSection);
+		expect(sections.length).toBe(2);
 	});
 });
