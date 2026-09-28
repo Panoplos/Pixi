@@ -1,7 +1,9 @@
 {
 	"$schema": "https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json",
 	"name": "dark",
+	"appearance": "dark",
 	"vars": {
+		"violet": "#c678dd",
 		"cyan": "#00d7ff",
 		"blue": "#5f87ff",
 		"green": "#b5bd68",
@@ -22,15 +24,15 @@
 		"customMsgBg": "#2d2838"
 	},
 	"colors": {
-		"accent": "accent",
-		"border": "blue",
-		"borderAccent": "cyan",
-		"borderMuted": "darkGray",
+		"accent": "violet",
+		"border": "okhsl(231 57% 65%)",
+		"borderAccent": "okhsl(295 53% 64%)",
+		"borderMuted": "okhsl(229 8% 53%)",
 		"success": "green",
 		"error": "red",
 		"warning": "yellow",
-		"muted": "gray",
-		"dim": "dimGray",
+		"muted": "muted",
+		"dim": "okhsl(229 8% 56%)",
 		"text": "text",
 		"thinkingText": "gray",
 
@@ -40,26 +42,24 @@
 		"searchMatchText": "text",
 		"userMessageBg": "userMsgBg",
 		"userMessageText": "text",
-		"customMessageBg": "customMsgBg",
-		"customMessageText": "text",
-		"customMessageLabel": "#9575cd",
-		"toolPendingBg": "toolPendingBg",
-		"toolSuccessBg": "toolSuccessBg",
-		"toolErrorBg": "toolErrorBg",
+		"customMessageBg": "okhsl(295 42% 24%)",
+		"customMessageText": "muted",
+		"customMessageLabel": "violet",
+		"toolPendingBg": "okhsl(229 5% 24%)",
+		"toolSuccessBg": "okhsl(158 46% 25%)",
+		"toolErrorBg": "okhsl(19 54% 25%)",
 		"toolTitle": "text",
-		"toolOutput": "gray",
-
-		"mdHeading": "#f0c674",
-		"mdLink": "#81a2be",
-		"mdLinkUrl": "dimGray",
-		"mdCode": "accent",
+		"toolOutput": "muted",
+		"mdHeading": "yellow",
+		"mdLink": "blue",
+		"mdLinkUrl": "muted",
+		"mdCode": "violet",
 		"mdCodeBlock": "green",
-		"mdCodeBlockBorder": "gray",
-		"mdQuote": "gray",
-		"mdQuoteBorder": "gray",
-		"mdHr": "gray",
-		"mdListBullet": "accent",
-
+		"mdCodeBlockBorder": "muted",
+		"mdQuote": "muted",
+		"mdQuoteBorder": "muted",
+		"mdHr": "muted",
+		"mdListBullet": "violet",
 		"toolDiffAdded": "green",
 		"toolDiffRemoved": "red",
 		"toolDiffContext": "gray",
@@ -95,8 +95,8 @@
 		"footerModel": "gray"
 	},
 	"export": {
-		"pageBg": "#18181e",
-		"cardBg": "#1e1e24",
-		"infoBg": "#3c3728"
+		"pageBg": "okhsl(262 14% 16%)",
+		"cardBg": "okhsl(264 13% 19%)",
+		"infoBg": "okhsl(53 51% 24%)"
 	}
 }

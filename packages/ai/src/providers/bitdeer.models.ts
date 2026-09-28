@@ -2,7 +2,13 @@
 // Do not edit manually - run 'npm run generate-models' to update
 
 import values from "./data/bitdeer.json" with { type: "json" };
-import { flattenModelCatalog, type ModelCatalog } from "../model-catalog.ts";
+import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
 
-export const BITDEER_MODELS: ModelCatalog<typeof values, "bitdeer"> =
-	flattenModelCatalog("bitdeer", values);
+export const BITDEER_MODELS: ChatModelCatalog<typeof values, "bitdeer"> =
+	flattenChatModelCatalog("bitdeer", values);
+
+export const BITDEER_IMAGE_MODELS: ImageModelCatalog<typeof values, "bitdeer"> =
+	flattenImageModelCatalog("bitdeer", values);
+
+export const BITDEER_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "bitdeer"> =
+	flattenClassifierModelCatalog("bitdeer", values);

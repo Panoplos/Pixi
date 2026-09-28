@@ -253,8 +253,8 @@ describe("ToolActivitySummaryComponent hint markup", () => {
 		expect(summary).toContain(" to expand");
 		expect(summary).not.toContain("[grey]");
 		expect(summary).not.toContain("[bold]");
-		// Hint rendered in grey (muted color code).
-		expect(summary).toContain("128;128;128");
+		// Hint rendered with styling but no literal markup.
+		expect(summary).toMatch(/\x1b\[/);
 		expect(summary).toMatch(/ran \d+ shell command/); // phrase still present
 	});
 

@@ -2,7 +2,13 @@
 // Do not edit manually - run 'npm run generate-models' to update
 
 import values from "./data/inco.json" with { type: "json" };
-import { flattenModelCatalog, type ModelCatalog } from "../model-catalog.ts";
+import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
 
-export const INCO_MODELS: ModelCatalog<typeof values, "inco"> =
-	flattenModelCatalog("inco", values);
+export const INCO_MODELS: ChatModelCatalog<typeof values, "inco"> =
+	flattenChatModelCatalog("inco", values);
+
+export const INCO_IMAGE_MODELS: ImageModelCatalog<typeof values, "inco"> =
+	flattenImageModelCatalog("inco", values);
+
+export const INCO_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "inco"> =
+	flattenClassifierModelCatalog("inco", values);
