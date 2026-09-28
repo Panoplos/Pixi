@@ -23,6 +23,7 @@ cp permission-gate.ts ~/.pi/agent/extensions/
 | `protected-paths.ts` | Blocks writes to protected paths (.env, .git/, node_modules/) |
 | `key-guard.ts` | Masks secret material (auth.json keys, token shapes, keyword-anchored assignments) before it enters model context |
 | `confirm-destructive.ts` | Confirms before destructive session actions (clear, switch, fork) |
+| `destructive-tool-guard.ts` | Asks the model for a justification and the user for confirmation before destructive commands |
 | `dirty-repo-guard.ts` | Prevents session changes with uncommitted git changes |
 | `sandbox/` | OS-level sandboxing using `@anthropic-ai/sandbox-runtime` with per-project config |
 | `gondolin/` | Route built-in tools and `!` commands into a Gondolin micro-VM |
