@@ -15,6 +15,7 @@ const BITDEER_COMPAT = {
 } as const satisfies OpenAICompletionsCompat;
 
 const REASONING_THINKING_LEVEL_MAP = { off: "none" } as const satisfies ThinkingLevelMap;
+const NO_DISABLE_THINKING_LEVEL_MAP = { off: null } as const satisfies ThinkingLevelMap;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -40,11 +41,15 @@ function bitdeerModel(input: {
 	id: string;
 	name: string;
 	reasoning: boolean;
+	/** Whether the endpoint accepts `reasoning_effort: "none"` (defaults to true). Models that
+	 * cannot disable reasoning 400 on "none", so "off" must be unrepresentable for them. */
+	canDisableReasoning?: boolean;
 	input: ("text" | "image")[];
 	cost: Model<"openai-completions">["cost"];
 	contextWindow: number;
 	maxTokens: number;
 }): Model<"openai-completions"> {
+	const canDisable = input.canDisableReasoning ?? true;
 	return {
 		id: input.id,
 		name: input.name,
@@ -52,7 +57,9 @@ function bitdeerModel(input: {
 		baseUrl: BITDEER_BASE_URL,
 		provider: "bitdeer",
 		reasoning: input.reasoning,
-		...(input.reasoning ? { thinkingLevelMap: REASONING_THINKING_LEVEL_MAP } : {}),
+		...(input.reasoning
+			? { thinkingLevelMap: canDisable ? REASONING_THINKING_LEVEL_MAP : NO_DISABLE_THINKING_LEVEL_MAP }
+			: {}),
 		input: input.input,
 		cost: input.cost,
 		contextWindow: input.contextWindow,
@@ -97,6 +104,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			id: "zai-org/GLM-5.3",
 			name: "GLM 5.3",
 			reasoning: true,
+			canDisableReasoning: false,
 			input: ["text"],
 			cost: { input: 140, output: 440, cacheRead: 14, cacheWrite: 0 },
 			contextWindow: 262_144,
@@ -106,6 +114,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			id: "zai-org/GLM-5.3-Flash",
 			name: "GLM 5.3 Flash",
 			reasoning: true,
+			canDisableReasoning: false,
 			input: ["text", "image"],
 			cost: { input: 7.5, output: 25, cacheRead: 1.5, cacheWrite: 0 },
 			contextWindow: 262_144,
@@ -115,6 +124,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			id: "moonshotai/Kimi-K3",
 			name: "Kimi K3",
 			reasoning: true,
+			canDisableReasoning: false,
 			input: ["text", "image"],
 			cost: { input: 266, output: 1330, cacheRead: 27.55, cacheWrite: 0 },
 			contextWindow: 262_144,
@@ -183,6 +193,7 @@ interface BitdeerSiteModelMeta {
 	maxTokens: number;
 	cost: Model<"openai-completions">["cost"];
 	hasVision: boolean;
+	canDisableReasoning: boolean;
 }
 
 async function postJson(url: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
@@ -217,6 +228,7 @@ export async function fetchBitdeerSiteModelMeta(signal?: AbortSignal): Promise<M
 					cacheWrite: 0,
 				},
 				hasVision: tags.some((tag) => isRecord(tag) && tag.tagId === "image-to-text"),
+				canDisableReasoning: detail.canDisableReasoning === true,
 			});
 		}),
 	);
@@ -231,6 +243,9 @@ function applyBitdeerSiteMeta(models: Model<"openai-completions">[], meta: Map<s
 		if (site.maxTokens > 0) model.maxTokens = site.maxTokens;
 		if (site.cost.input > 0 || site.cost.output > 0) model.cost = site.cost;
 		if (site.hasVision) model.input = ["text", "image"];
+		if (model.reasoning) {
+			model.thinkingLevelMap = site.canDisableReasoning ? { off: "none" } : { off: null };
+		}
 	}
 }
 

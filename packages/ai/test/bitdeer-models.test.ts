@@ -46,6 +46,14 @@ describe("Bitdeer catalog", () => {
 		});
 	});
 
+	it("marks models that cannot disable reasoning with an unrepresentable off level", () => {
+		const byId = new Map(getBitdeerSeedModels().map((model) => [model.id, model]));
+		// Measured on the live endpoint: GLM-5.3/Flash and Kimi-K3 400 on reasoning_effort "none".
+		expect(byId.get("zai-org/GLM-5.3-Flash")?.thinkingLevelMap).toEqual({ off: null });
+		expect(byId.get("moonshotai/Kimi-K3")?.thinkingLevelMap).toEqual({ off: null });
+		expect(byId.get("deepseek-ai/DeepSeek-V4.1-Flash")?.thinkingLevelMap).toEqual({ off: "none" });
+	});
+
 	it("keeps seeded metadata for a known live id and derives it for unknown ids", () => {
 		const models = parseBitdeerChatModels({
 			data: [
@@ -112,6 +120,7 @@ describe("Bitdeer catalog", () => {
 					inputPrice: 12.5,
 					outputPrice: 50,
 					cachedInputPrice: 1.25,
+					canDisableReasoning: true,
 					tags: [{ tagId: "image-to-text" }],
 				}),
 				{ status: 200 },
@@ -138,6 +147,7 @@ describe("Bitdeer catalog", () => {
 			contextWindow: 300_000,
 			maxTokens: 40_000,
 			cost: { input: 12.5, output: 50, cacheRead: 1.25, cacheWrite: 0 },
+			thinkingLevelMap: { off: "none" },
 		});
 		// The dynamic catalog replaces the refreshed list; static seed entries stay registered.
 		expect((await modelsStore.read("bitdeer"))?.models.map((model) => model.id)).toEqual(["moonshotai/Kimi-K3"]);
