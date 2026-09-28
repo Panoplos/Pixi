@@ -88,6 +88,9 @@ export interface EditorComponent extends Component {
 	/** Set the prompt prefix marker shown before the first input line */
 	setPrefix?(prefix: string): void;
 
+	/** Override the prefix color (e.g. bash mode). Pass undefined to restore the theme's prefix color. */
+	setPrefixColor?(color: ((str: string) => string) | undefined): void;
+
 	/** Set max visible items in autocomplete dropdown */
 	setAutocompleteMaxVisible?(maxVisible: number): void;
 

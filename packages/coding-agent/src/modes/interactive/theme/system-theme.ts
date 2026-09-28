@@ -109,7 +109,7 @@ const TOKEN_FAMILIES: Record<ThemeToken, FamilyName> = {
 	success: "green",
 	mdCodeBlock: "green",
 	toolDiffAdded: "green",
-	bashMode: "green",
+	bashMode: "yellow",
 	syntaxNumber: "green",
 	error: "red",
 	toolDiffRemoved: "red",
