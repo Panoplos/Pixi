@@ -1878,11 +1878,13 @@ export class AgentSession {
 	 * Internal: Queue a steering message (already expanded, no extension command check).
 	 */
 	private async _queueSteer(text: string, images?: ImageContent[]): Promise<void> {
+		const normalized = await this._normalizePromptImages(images);
+		if (normalized.hints.length > 0) text = `${text}\n\n${normalized.hints.join("\n")}`;
 		this._steeringMessages.push(text);
 		this._emitQueueUpdate();
 		const content: (TextContent | ImageContent)[] = [{ type: "text", text }];
-		if (images) {
-			content.push(...images);
+		if (normalized.images.length > 0) {
+			content.push(...normalized.images);
 		}
 		this.agent.steer({
 			role: "user",
@@ -1895,11 +1897,13 @@ export class AgentSession {
 	 * Internal: Queue a follow-up message (already expanded, no extension command check).
 	 */
 	private async _queueFollowUp(text: string, images?: ImageContent[]): Promise<void> {
+		const normalized = await this._normalizePromptImages(images);
+		if (normalized.hints.length > 0) text = `${text}\n\n${normalized.hints.join("\n")}`;
 		this._followUpMessages.push(text);
 		this._emitQueueUpdate();
 		const content: (TextContent | ImageContent)[] = [{ type: "text", text }];
-		if (images) {
-			content.push(...images);
+		if (normalized.images.length > 0) {
+			content.push(...normalized.images);
 		}
 		this.agent.followUp({ role: "user", content, timestamp: Date.now() });
 	}
