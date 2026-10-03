@@ -298,47 +298,8 @@ describe("Tool Results with Images", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.TOGETHER_API_KEY)("Together AI Provider (Kimi-K2.6)", () => {
+	describe.skipIf(!process.env.TOGETHER_API_KEY)("Together AI Provider (Kimi-K3)", () => {
 		const llm = getModel("together", "moonshotai/Kimi-K3");
-		const options = { reasoningEffort: "high" } satisfies StreamOptionsWithExtras;
-
-		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
-			await handleToolWithImageResult(llm, options);
-		});
-
-		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-			await handleToolWithTextAndImageResult(llm, options);
-		});
-	});
-
-	describe.skipIf(!process.env.DEEPINFRA_API_KEY)("DeepInfra Provider (Kimi-K2.6)", () => {
-		const llm = getModel("deepinfra", "deepseek-ai/DeepSeek-V4-Flash-0731");
-		const options = { reasoningEffort: "high" } satisfies StreamOptionsWithExtras;
-
-		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
-			await handleToolWithImageResult(llm, options);
-		});
-
-		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-			await handleToolWithTextAndImageResult(llm, options);
-		});
-	});
-
-	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer Provider", () => {
-		const llm = getModel("bitdeer", "zai-org/GLM-5.3-Flash");
-		const options = { reasoningEffort: "high" } satisfies StreamOptionsWithExtras;
-
-		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
-			await handleToolWithImageResult(llm, options);
-		});
-
-		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-			await handleToolWithTextAndImageResult(llm, options);
-		});
-	});
-
-	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider", () => {
-		const llm = getModel("inco", "glm-5.3-flash");
 		const options = { reasoningEffort: "high" } satisfies StreamOptionsWithExtras;
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
@@ -585,5 +546,43 @@ describe("Tool Results with Images", () => {
 				await handleToolWithTextAndImageResult(llm, { apiKey: openaiCodexToken });
 			},
 		);
+	});
+	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider", () => {
+		const llm = getModel("inco", "glm-5.3-flash");
+		const options = { reasoningEffort: "high" } satisfies StreamOptionsWithExtras;
+
+		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
+			await handleToolWithImageResult(llm, options);
+		});
+
+		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
+			await handleToolWithTextAndImageResult(llm, options);
+		});
+	});
+
+	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer Provider", () => {
+		const llm = getModel("bitdeer", "zai-org/GLM-5.3-Flash");
+		const options = { reasoningEffort: "high" } satisfies StreamOptionsWithExtras;
+
+		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
+			await handleToolWithImageResult(llm, options);
+		});
+
+		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
+			await handleToolWithTextAndImageResult(llm, options);
+		});
+	});
+
+	describe.skipIf(!process.env.DEEPINFRA_API_KEY)("DeepInfra Provider (Kimi-K2.6)", () => {
+		const llm = getModel("deepinfra", "deepseek-ai/DeepSeek-V4-Flash-0731");
+		const options = { reasoningEffort: "high" } satisfies StreamOptionsWithExtras;
+
+		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
+			await handleToolWithImageResult(llm, options);
+		});
+
+		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
+			await handleToolWithTextAndImageResult(llm, options);
+		});
 	});
 });

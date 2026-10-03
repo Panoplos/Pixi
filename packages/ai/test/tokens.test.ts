@@ -193,30 +193,6 @@ describe("Token Statistics on Abort", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.DEEPINFRA_API_KEY)("DeepInfra Provider", () => {
-		const llm = getModel("deepinfra", "deepseek-ai/DeepSeek-V4-Flash-0731");
-
-		it("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
-			await testTokensOnAbort(llm);
-		});
-	});
-
-	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer Provider", () => {
-		const llm = getModel("bitdeer", "deepseek-ai/DeepSeek-V4.1-Flash");
-
-		it("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
-			await testTokensOnAbort(llm);
-		});
-	});
-
-	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider", () => {
-		const llm = getModel("inco", "deepseek-v4.1-flash:fast");
-
-		it("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
-			await testTokensOnAbort(llm);
-		});
-	});
-
 	describe.skipIf(!process.env.BASETEN_API_KEY)("Baseten Provider", () => {
 		const llm = getModel("baseten", "zai-org/GLM-5.2");
 
@@ -389,6 +365,29 @@ describe("Token Statistics on Abort", () => {
 
 	describe.skipIf(!hasBedrockCredentials())("Amazon Bedrock Provider", () => {
 		const llm = getModel("amazon-bedrock", "global.anthropic.claude-sonnet-4-5-20250929-v1:0");
+
+		it("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
+			await testTokensOnAbort(llm);
+		});
+	});
+	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider", () => {
+		const llm = getModel("inco", "deepseek-v4.1-flash:fast");
+
+		it("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
+			await testTokensOnAbort(llm);
+		});
+	});
+
+	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer Provider", () => {
+		const llm = getModel("bitdeer", "deepseek-ai/DeepSeek-V4.1-Flash");
+
+		it("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
+			await testTokensOnAbort(llm);
+		});
+	});
+
+	describe.skipIf(!process.env.DEEPINFRA_API_KEY)("DeepInfra Provider", () => {
+		const llm = getModel("deepinfra", "deepseek-ai/DeepSeek-V4-Flash-0731");
 
 		it("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
 			await testTokensOnAbort(llm);

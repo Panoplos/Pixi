@@ -700,9 +700,9 @@ describe("Generate E2E Tests", () => {
 	);
 
 	describe.skipIf(!hasCloudflareAiGatewayCredentials() || !process.env.ANTHROPIC_API_KEY)(
-		"Cloudflare AI Gateway → Anthropic BYOK (claude-sonnet-4.5 via /anthropic messages)",
+		"Cloudflare AI Gateway → Anthropic BYOK (claude-sonnet-4-5 via /anthropic messages)",
 		() => {
-			const llm = getModel("cloudflare-ai-gateway", "claude-sonnet-4.5");
+			const llm = getModel("cloudflare-ai-gateway", "claude-sonnet-4-5");
 			const options = { headers: { Authorization: `Bearer ${process.env.ANTHROPIC_API_KEY}` } };
 			const thinkingOptions = {
 				...options,
@@ -756,43 +756,7 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.DEEPINFRA_API_KEY)("DeepInfra Provider", () => {
-		const llm = getModel("deepinfra", "deepseek-ai/DeepSeek-V4-Flash-0731");
-
-		it("should complete basic text generation", { retry: 3 }, async () => {
-			await basicTextGeneration(llm);
-		});
-
-		it("should handle tool calling with thinking", { retry: 3 }, async () => {
-			await handleToolCall(llm, { reasoningEffort: "medium" });
-		});
-	});
-
-	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer Provider", () => {
-		const llm = getModel("bitdeer", "deepseek-ai/DeepSeek-V4.1-Flash");
-
-		it("should complete basic text generation", { retry: 3 }, async () => {
-			await basicTextGeneration(llm);
-		});
-
-		it("should handle tool calling with thinking", { retry: 3 }, async () => {
-			await handleToolCall(llm, { reasoningEffort: "medium" });
-		});
-	});
-
-	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider", () => {
-		const llm = getModel("inco", "deepseek-v4.1-flash:fast");
-
-		it("should complete basic text generation", { retry: 3 }, async () => {
-			await basicTextGeneration(llm);
-		});
-
-		it("should handle tool calling with thinking", { retry: 3 }, async () => {
-			await handleToolCall(llm, { reasoningEffort: "medium" });
-		});
-	});
-
-	describe.skipIf(!process.env.TOGETHER_API_KEY)("Together AI Provider (Kimi-K2.6 via OpenAI Completions)", () => {
+	describe.skipIf(!process.env.TOGETHER_API_KEY)("Together AI Provider (Kimi-K3 via OpenAI Completions)", () => {
 		const llm = getModel("together", "moonshotai/Kimi-K3");
 
 		it("should complete basic text generation", { retry: 3 }, async () => {
@@ -1772,6 +1736,41 @@ describe("Generate E2E Tests", () => {
 
 		it("should handle multi-turn with thinking and tools", { retry: 3 }, async () => {
 			await multiTurn(llm, { apiKey: "test", reasoningEffort: "medium" });
+		});
+	});
+	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider", () => {
+		const llm = getModel("inco", "deepseek-v4.1-flash:fast");
+
+		it("should complete basic text generation", { retry: 3 }, async () => {
+			await basicTextGeneration(llm);
+		});
+
+		it("should handle tool calling with thinking", { retry: 3 }, async () => {
+			await handleToolCall(llm, { reasoningEffort: "medium" });
+		});
+	});
+
+	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer Provider", () => {
+		const llm = getModel("bitdeer", "deepseek-ai/DeepSeek-V4.1-Flash");
+
+		it("should complete basic text generation", { retry: 3 }, async () => {
+			await basicTextGeneration(llm);
+		});
+
+		it("should handle tool calling with thinking", { retry: 3 }, async () => {
+			await handleToolCall(llm, { reasoningEffort: "medium" });
+		});
+	});
+
+	describe.skipIf(!process.env.DEEPINFRA_API_KEY)("DeepInfra Provider", () => {
+		const llm = getModel("deepinfra", "deepseek-ai/DeepSeek-V4-Flash-0731");
+
+		it("should complete basic text generation", { retry: 3 }, async () => {
+			await basicTextGeneration(llm);
+		});
+
+		it("should handle tool calling with thinking", { retry: 3 }, async () => {
+			await handleToolCall(llm, { reasoningEffort: "medium" });
 		});
 	});
 });

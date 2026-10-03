@@ -107,7 +107,7 @@ const PROVIDER_MODEL_PAIRS: ProviderModelPair[] = [
 	// Hugging Face
 	{ provider: "huggingface", model: "moonshotai/Kimi-K2.5", label: "huggingface-kimi-k2.5" },
 	// Together AI
-	{ provider: "together", model: "moonshotai/Kimi-K2.6", label: "together-kimi-k2.6" },
+	{ provider: "together", model: "moonshotai/Kimi-K3", label: "together-kimi-k3" },
 	// DeepInfra
 	{ provider: "deepinfra", model: "deepseek-ai/DeepSeek-V4-Flash-0731", label: "deepinfra-deepseek-v4-flash" },
 	{ provider: "inco", model: "deepseek-v4.1-flash:fast", label: "inco-deepseek-v4.1-flash" },

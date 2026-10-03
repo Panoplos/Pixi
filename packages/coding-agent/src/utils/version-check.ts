@@ -71,17 +71,31 @@ export async function getLatestPiRelease(
 	if (!response.ok) return undefined;
 
 	const data = (await response.json()) as {
+		packageName?: unknown;
 		tag_name?: unknown;
+		version?: unknown;
 		body?: unknown;
+		note?: unknown;
 	};
-	const tagName = typeof data.tag_name === "string" ? data.tag_name.trim() : "";
-	const version = tagName.replace(/^v/, "");
+	// Accept the pi.dev `{version}` shape as well as GitHub release JSON, so pi-branded
+	// tooling and tests that stub the old endpoint keep working.
+	let version = "";
+	if (typeof data.version === "string" && data.version.trim()) version = data.version.trim();
+	else if (typeof data.tag_name === "string") version = data.tag_name.trim().replace(/^v/, "");
 	if (!version) {
 		return undefined;
 	}
-	const note = typeof data.body === "string" && data.body.trim() ? data.body.trim() : undefined;
+	const packageName =
+		typeof data.packageName === "string" && data.packageName.trim() ? data.packageName.trim() : undefined;
+	const note =
+		typeof data.note === "string" && data.note.trim()
+			? data.note.trim()
+			: typeof data.body === "string" && data.body.trim()
+				? data.body.trim()
+				: undefined;
 	return {
 		version,
+		packageName,
 		...(note ? { note } : {}),
 	};
 }

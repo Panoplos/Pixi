@@ -695,10 +695,10 @@ export class Editor implements Component, Focusable {
 					if (preview && firstGrapheme) {
 						const rest = preview.slice(firstGrapheme.length);
 						const restPart = rest ? (this.theme.ghost ? this.theme.ghost(rest) : rest) : "";
-						displayText = before + marker + `\x1b[7m${firstGrapheme}\x1b[0m${restPart}`;
+						displayText = `${before}${marker}\x1b[7m${firstGrapheme}\x1b[0m${restPart}`;
 						lineVisibleWidth = lineVisibleWidth + visibleWidth(firstGrapheme) + visibleWidth(rest);
 					} else {
-						displayText = before + marker + "\x1b[7m \x1b[0m";
+						displayText = `${before}${marker}\x1b[7m \x1b[0m`;
 						lineVisibleWidth = lineVisibleWidth + 1;
 					}
 					// If cursor overflows content width into the padding, flag it

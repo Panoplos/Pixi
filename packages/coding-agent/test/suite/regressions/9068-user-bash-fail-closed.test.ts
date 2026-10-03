@@ -125,13 +125,16 @@ type InteractiveBashContext = {
 	pendingBashComponents: unknown[];
 	isBashMode: boolean;
 	handleBashCommand(command: string, excludeFromContext?: boolean): Promise<void>;
+	exitBashMode(): void;
 	showError(message: string): void;
 	updateEditorBorderColor(): void;
+	updateBashModeChrome(): void;
 };
 
 const interactiveModePrototype = InteractiveMode.prototype as unknown as {
 	setupEditorSubmitHandler(this: InteractiveBashContext): void;
 	handleBashCommand(this: InteractiveBashContext, command: string, excludeFromContext?: boolean): Promise<void>;
+	exitBashMode(this: InteractiveBashContext): void;
 };
 
 const localResult = {
@@ -245,10 +248,12 @@ describe("Interactive user_bash failure handling (#9068)", () => {
 			chatContainer: { addChild: vi.fn() },
 			pendingMessagesContainer: { addChild: vi.fn() },
 			pendingBashComponents: [],
-			isBashMode: true,
+			isBashMode: false,
 			handleBashCommand: interactiveModePrototype.handleBashCommand,
+			exitBashMode: interactiveModePrototype.exitBashMode,
 			showError: vi.fn(),
 			updateEditorBorderColor: vi.fn(),
+			updateBashModeChrome: vi.fn(),
 		};
 		interactiveModePrototype.setupEditorSubmitHandler.call(context);
 
