@@ -29,6 +29,7 @@ type Ctx = {
 	ui: TUI;
 	isInitialized: boolean;
 	footer: { invalidate(): void };
+	programStatus: { handleEvent(event: unknown): void };
 	pendingTools: Map<string, ToolExecutionComponent>;
 	sectionByToolCall: Map<string, ToolActivitySummaryComponent>;
 	standaloneToolCall: Map<string, ToolExecutionComponent>;
@@ -60,6 +61,7 @@ function makeCtx(): Ctx {
 		ui: { requestRender: vi.fn() } as unknown as TUI,
 		isInitialized: true,
 		footer: { invalidate: vi.fn() },
+		programStatus: { handleEvent: vi.fn() },
 		pendingTools: new Map(),
 		sectionByToolCall: new Map(),
 		standaloneToolCall: new Map(),

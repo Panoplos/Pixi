@@ -13,6 +13,7 @@ import {
 	type WheelScrollLines,
 } from "@earendil-works/pi-tui";
 import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../../../core/http-dispatcher.ts";
+import { SETTINGS_DEFAULTS } from "../../../core/settings-defaults.ts";
 import {
 	CACHE_WARMING_MODES,
 	type CacheWarmingMode,
@@ -20,6 +21,7 @@ import {
 	type FullscreenExitOutput,
 	type MermaidRenderingMode,
 	type QuietStartup,
+	type SessionShareDestination,
 	type TuiMode,
 	type WarningSettings,
 } from "../../../core/settings-manager.ts";
@@ -78,6 +80,7 @@ export interface SettingsConfig {
 	steeringMode: "all" | "one-at-a-time";
 	followUpMode: "all" | "one-at-a-time";
 	transport: Transport;
+	sessionShareDestination: SessionShareDestination;
 	httpIdleTimeoutMs: number;
 	cacheWarmingMode: CacheWarmingMode;
 	thinkingLevel: ThinkingLevel;
@@ -121,6 +124,7 @@ export interface SettingsCallbacks {
 	onSteeringModeChange: (mode: "all" | "one-at-a-time") => void;
 	onFollowUpModeChange: (mode: "all" | "one-at-a-time") => void;
 	onTransportChange: (transport: Transport) => void;
+	onSessionShareDestinationChange: (destination: SessionShareDestination) => void;
 	onHttpIdleTimeoutMsChange: (timeoutMs: number) => void;
 	onCacheWarmingModeChange: (mode: CacheWarmingMode) => void;
 	onModelThinkingLevelChange: (provider: string, modelId: string, level: ThinkingLevel) => void;
@@ -168,7 +172,8 @@ class WarningSettingsSubmenu extends Container {
 				id: "anthropic-extra-usage",
 				label: "Anthropic extra usage",
 				description: "Warn when Anthropic subscription auth may use paid extra usage",
-				currentValue: (this.state.anthropicExtraUsage ?? true) ? "true" : "false",
+				currentValue:
+					(this.state.anthropicExtraUsage ?? SETTINGS_DEFAULTS.warnings.anthropicExtraUsage) ? "true" : "false",
 				values: ["true", "false"],
 			},
 		];
@@ -533,6 +538,14 @@ export class SettingsSelectorComponent extends Container {
 				values: ["sse", "websocket", "websocket-cached", "auto"],
 			},
 			{
+				id: "share-destination",
+				label: "Session share destination",
+				description:
+					"Where to upload sessions with /share (auto prefers Radius when authenticated, otherwise GitHub Gist)",
+				currentValue: config.sessionShareDestination,
+				values: ["auto", "gist", "radius"],
+			},
+			{
 				id: "http-idle-timeout",
 				label: "HTTP idle timeout",
 				description:
@@ -832,7 +845,7 @@ export class SettingsSelectorComponent extends Container {
 		items.splice(skillCommandsIndex + 1, 0, {
 			id: "show-hardware-cursor",
 			label: "Show hardware cursor",
-			description: "Show the terminal cursor while still positioning it for IME support",
+			description: "Use the terminal cursor instead of Pi's drawn cursor",
 			currentValue: config.showHardwareCursor ? "true" : "false",
 			values: ["true", "false"],
 		});
@@ -852,7 +865,7 @@ export class SettingsSelectorComponent extends Container {
 		items.splice(editorPaddingIndex + 1, 0, {
 			id: "output-padding",
 			label: "Output padding",
-			description: "Horizontal padding for user messages, assistant messages, and thinking",
+			description: "Horizontal padding for messages, tool output, and command output",
 			currentValue: String(config.outputPad),
 			values: ["0", "1"],
 		});
@@ -928,6 +941,9 @@ export class SettingsSelectorComponent extends Container {
 						break;
 					case "transport":
 						callbacks.onTransportChange(newValue as Transport);
+						break;
+					case "share-destination":
+						callbacks.onSessionShareDestinationChange(newValue as SessionShareDestination);
 						break;
 					case "http-idle-timeout": {
 						const choice = HTTP_IDLE_TIMEOUT_CHOICES.find((item) => item.label === newValue);

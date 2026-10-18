@@ -46,6 +46,7 @@ type RenderSessionContextThis = {
 	standaloneToolCall: Map<string, ToolExecutionComponent>;
 	activeToolSection: ToolActivitySummaryComponent | undefined;
 	footer: { invalidate(): void };
+	programStatus: { handleEvent(event: unknown): void };
 	ui: TUI;
 	settingsManager: {
 		getShowImages(): boolean;
@@ -90,6 +91,7 @@ function createFakeInteractiveModeThis(): RenderSessionContextThis {
 		standaloneToolCall: new Map<string, ToolExecutionComponent>(),
 		activeToolSection: undefined,
 		footer: { invalidate: vi.fn() },
+		programStatus: { handleEvent: vi.fn() },
 		ui: { requestRender: vi.fn() } as unknown as TUI,
 		settingsManager: {
 			getShowImages: () => false,

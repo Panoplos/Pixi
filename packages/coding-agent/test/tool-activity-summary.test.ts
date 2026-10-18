@@ -80,6 +80,7 @@ describe("InteractiveMode live activity boundaries", () => {
 			},
 			getOrCreateActiveToolSection: vi.fn(),
 			footer: { invalidate: vi.fn() },
+			programStatus: { handleEvent: vi.fn() },
 			ui: { requestRender: vi.fn() },
 		};
 		const handleEvent = (

@@ -107,6 +107,7 @@ export class ToolActivitySummaryComponent extends Container {
 			content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
 			isError: boolean;
 			details?: unknown;
+			durationMs?: number;
 		},
 		isPartial = false,
 	): void {

@@ -18,6 +18,8 @@ function renderContext(lastComponent: Component | undefined, argsComplete: boole
 		expanded: false,
 		showImages: false,
 		isError: false,
+		durationMs: undefined,
+		outputPad: 1,
 	};
 }
 

@@ -4,7 +4,7 @@
 import { AMAZON_BEDROCK_CLASSIFIER_MODELS, AMAZON_BEDROCK_IMAGE_MODELS, AMAZON_BEDROCK_MODELS } from "./providers/amazon-bedrock.models.ts";
 import { ANT_LING_CLASSIFIER_MODELS, ANT_LING_IMAGE_MODELS, ANT_LING_MODELS } from "./providers/ant-ling.models.ts";
 import { ANTHROPIC_CLASSIFIER_MODELS, ANTHROPIC_IMAGE_MODELS, ANTHROPIC_MODELS } from "./providers/anthropic.models.ts";
-import { AZURE_OPENAI_RESPONSES_CLASSIFIER_MODELS, AZURE_OPENAI_RESPONSES_IMAGE_MODELS, AZURE_OPENAI_RESPONSES_MODELS } from "./providers/azure-openai-responses.models.ts";
+import { AZURE_CLASSIFIER_MODELS, AZURE_IMAGE_MODELS, AZURE_MODELS } from "./providers/azure.models.ts";
 import { BASETEN_CLASSIFIER_MODELS, BASETEN_IMAGE_MODELS, BASETEN_MODELS } from "./providers/baseten.models.ts";
 import { BITDEER_CLASSIFIER_MODELS, BITDEER_IMAGE_MODELS, BITDEER_MODELS } from "./providers/bitdeer.models.ts";
 import { CEREBRAS_CLASSIFIER_MODELS, CEREBRAS_IMAGE_MODELS, CEREBRAS_MODELS } from "./providers/cerebras.models.ts";
@@ -51,7 +51,7 @@ export const MODELS: {
 	readonly "amazon-bedrock": typeof AMAZON_BEDROCK_MODELS;
 	readonly "ant-ling": typeof ANT_LING_MODELS;
 	readonly "anthropic": typeof ANTHROPIC_MODELS;
-	readonly "azure-openai-responses": typeof AZURE_OPENAI_RESPONSES_MODELS;
+	readonly "azure": typeof AZURE_MODELS;
 	readonly "baseten": typeof BASETEN_MODELS;
 	readonly "bitdeer": typeof BITDEER_MODELS;
 	readonly "cerebras": typeof CEREBRAS_MODELS;
@@ -97,7 +97,7 @@ export const MODELS: {
 	"amazon-bedrock": AMAZON_BEDROCK_MODELS,
 	"ant-ling": ANT_LING_MODELS,
 	"anthropic": ANTHROPIC_MODELS,
-	"azure-openai-responses": AZURE_OPENAI_RESPONSES_MODELS,
+	"azure": AZURE_MODELS,
 	"baseten": BASETEN_MODELS,
 	"bitdeer": BITDEER_MODELS,
 	"cerebras": CEREBRAS_MODELS,
@@ -145,7 +145,7 @@ export const IMAGE_MODELS: {
 	readonly "amazon-bedrock": typeof AMAZON_BEDROCK_IMAGE_MODELS;
 	readonly "ant-ling": typeof ANT_LING_IMAGE_MODELS;
 	readonly "anthropic": typeof ANTHROPIC_IMAGE_MODELS;
-	readonly "azure-openai-responses": typeof AZURE_OPENAI_RESPONSES_IMAGE_MODELS;
+	readonly "azure": typeof AZURE_IMAGE_MODELS;
 	readonly "baseten": typeof BASETEN_IMAGE_MODELS;
 	readonly "bitdeer": typeof BITDEER_IMAGE_MODELS;
 	readonly "cerebras": typeof CEREBRAS_IMAGE_MODELS;
@@ -191,7 +191,7 @@ export const IMAGE_MODELS: {
 	"amazon-bedrock": AMAZON_BEDROCK_IMAGE_MODELS,
 	"ant-ling": ANT_LING_IMAGE_MODELS,
 	"anthropic": ANTHROPIC_IMAGE_MODELS,
-	"azure-openai-responses": AZURE_OPENAI_RESPONSES_IMAGE_MODELS,
+	"azure": AZURE_IMAGE_MODELS,
 	"baseten": BASETEN_IMAGE_MODELS,
 	"bitdeer": BITDEER_IMAGE_MODELS,
 	"cerebras": CEREBRAS_IMAGE_MODELS,
@@ -239,7 +239,7 @@ export const CLASSIFIER_MODELS: {
 	readonly "amazon-bedrock": typeof AMAZON_BEDROCK_CLASSIFIER_MODELS;
 	readonly "ant-ling": typeof ANT_LING_CLASSIFIER_MODELS;
 	readonly "anthropic": typeof ANTHROPIC_CLASSIFIER_MODELS;
-	readonly "azure-openai-responses": typeof AZURE_OPENAI_RESPONSES_CLASSIFIER_MODELS;
+	readonly "azure": typeof AZURE_CLASSIFIER_MODELS;
 	readonly "baseten": typeof BASETEN_CLASSIFIER_MODELS;
 	readonly "bitdeer": typeof BITDEER_CLASSIFIER_MODELS;
 	readonly "cerebras": typeof CEREBRAS_CLASSIFIER_MODELS;
@@ -285,7 +285,7 @@ export const CLASSIFIER_MODELS: {
 	"amazon-bedrock": AMAZON_BEDROCK_CLASSIFIER_MODELS,
 	"ant-ling": ANT_LING_CLASSIFIER_MODELS,
 	"anthropic": ANTHROPIC_CLASSIFIER_MODELS,
-	"azure-openai-responses": AZURE_OPENAI_RESPONSES_CLASSIFIER_MODELS,
+	"azure": AZURE_CLASSIFIER_MODELS,
 	"baseten": BASETEN_CLASSIFIER_MODELS,
 	"bitdeer": BITDEER_CLASSIFIER_MODELS,
 	"cerebras": CEREBRAS_CLASSIFIER_MODELS,

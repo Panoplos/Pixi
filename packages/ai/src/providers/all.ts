@@ -4,7 +4,7 @@ import type { AnyModel, Api, ClassifierApi, ClassifierModel, ImageApi, ImageMode
 import { amazonBedrockProvider } from "./amazon-bedrock.ts";
 import { antLingProvider } from "./ant-ling.ts";
 import { anthropicProvider } from "./anthropic.ts";
-import { azureOpenAIResponsesProvider } from "./azure-openai-responses.ts";
+import { azureProvider } from "./azure.ts";
 import { basetenProvider } from "./baseten.ts";
 import { bitdeerProvider } from "./bitdeer.ts";
 import { cerebrasProvider } from "./cerebras.ts";
@@ -141,7 +141,7 @@ export function builtinProviders(): Provider[] {
 		amazonBedrockProvider(),
 		antLingProvider(),
 		anthropicProvider(),
-		azureOpenAIResponsesProvider(),
+		azureProvider(),
 		basetenProvider(),
 		bitdeerProvider(),
 		cerebrasProvider(),
