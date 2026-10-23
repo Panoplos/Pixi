@@ -46,6 +46,15 @@ function shellDurationMs(call: SectionCall): number | undefined {
  * One shell command: a title, the command line, and the tail of its output. A running command shows its purpose;
  * a finished one shows the aggregate phrase for its call, such as `ran 1 shell command`.
  */
+function styleShellTitle(titleText: string): string {
+	const committed = "Committed";
+	if (titleText === committed) return theme.fg("muted", committed);
+	if (titleText.startsWith(`${committed} `)) {
+		return theme.fg("muted", committed) + theme.fg("toolTitle", titleText.slice(committed.length));
+	}
+	return theme.fg("toolTitle", titleText);
+}
+
 function renderShellDetail(call: SectionCall, width: number, finishedTitle?: string): string[] {
 	const args = (call.args ?? {}) as Record<string, unknown>;
 	const titleText =
@@ -53,7 +62,7 @@ function renderShellDetail(call: SectionCall, width: number, finishedTitle?: str
 			? (str(args.summary) || "Running shell command").replace(/\s+/g, " ").trim()
 			: (finishedTitle ?? "ran 1 shell command");
 	const elapsed = shellDurationMs(call);
-	let title = theme.italic(theme.fg("toolTitle", titleText));
+	let title = theme.italic(styleShellTitle(titleText));
 	if (elapsed !== undefined) title += theme.italic(theme.fg("muted", ` · ${formatToolDuration(elapsed)}`));
 	const lines = [truncateToWidth(title, width, "...", true), ""];
 
@@ -306,16 +315,23 @@ export class ToolActivitySummaryComponent extends Container {
 			}
 		}
 		const phrase = summarizeSection(calls, { results });
+		let rendered = this.styleSummary(phrase);
 		const duration = this.shellTotalDuration();
-		const counts = this.boldCounts(phrase);
-		const withDuration = duration === undefined ? counts : `${counts} · ${duration}`;
-		const rendered =
-			phrase && !this.expanded && this.collapseHint ? `${withDuration} (${this.collapseHint})` : withDuration;
-		this.summaryText.setText(
-			theme.fg("toolTitle", this.singleShellCall() === undefined ? rendered : theme.italic(rendered)),
-		);
+		if (duration !== undefined) rendered += theme.fg("muted", ` · ${duration}`);
+		if (phrase && !this.expanded && this.collapseHint) {
+			rendered += `${theme.fg("toolTitle", " (")}${this.collapseHint}${theme.fg("toolTitle", ")")}`;
+		}
+		this.summaryText.setText(this.singleShellCall() === undefined ? rendered : theme.italic(rendered));
 		this.syncRunningTimer();
 		this.ui.requestRender();
+	}
+
+	/** Style a summary phrase: `Committed` stays quiet, counts and hashes are bold. */
+	private styleSummary(phrase: string): string {
+		return phrase
+			.split(/(\bCommitted\b)/)
+			.map((part) => (part === "Committed" ? theme.fg("muted", part) : theme.fg("toolTitle", this.boldCounts(part))))
+			.join("");
 	}
 
 	/** Bold integer counts and commit hashes in an aggregate summary phrase (e.g. `read 3 files`, `Committed 9be7da6`). */

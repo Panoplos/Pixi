@@ -7,7 +7,7 @@ import { type ActivityToolCall, extractCommitHash, summarizeSection } from "../s
 import { ToolActivitySummaryComponent } from "../src/modes/interactive/components/tool-activity-summary.ts";
 import type { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 function call(id: string, toolName: string, args: Record<string, unknown> = {}): ActivityToolCall {
@@ -274,8 +274,9 @@ describe("ToolActivitySummaryComponent hint markup", () => {
 
 		const lines = section.render(200);
 		const summary = lines.join("\n");
-		// Hash gets the same bold treatment as the integer counts.
+		// Hash gets the same bold treatment as the integer counts, while the status word stays quiet.
 		expect(summary).toContain("\u001b[1m9be7da6\u001b[22m");
+		expect(summary).toContain(theme.fg("muted", "Committed"));
 	});
 });
 
@@ -356,6 +357,22 @@ describe("ToolActivitySummaryComponent running shell preview", () => {
 		const header = lines.findIndex((line) => line.includes("ran 1 shell command"));
 		expect(lines[header + 1]?.trim()).toBe("");
 		expect(lines[header + 2]).toContain("$ rg linter");
+	});
+
+	it("renders Committed in muted in a finished commit block", () => {
+		chalk.level = 1;
+		const section = sectionHarness();
+		section.addOrUpdateTool("bash", "gc", { command: "git commit -m fix" });
+		section.updateResult("gc", {
+			content: [{ type: "text", text: "[main 9be7da6] fix" }],
+			isError: false,
+			durationMs: 15_100,
+		});
+
+		const raw = section.render(80).join("\n");
+		expect(stripAnsi(raw)).toContain("Committed 9be7da6 · 15.1s");
+		expect(raw).toContain(theme.fg("muted", "Committed"));
+		expect(raw).toContain(theme.fg("toolTitle", " 9be7da6"));
 	});
 
 	it("adds the cumulative runtime of several commands to the aggregate summary", () => {
