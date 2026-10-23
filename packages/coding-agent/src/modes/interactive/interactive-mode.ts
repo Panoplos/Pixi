@@ -3282,8 +3282,20 @@ export class InteractiveMode {
 	 * attachment and clear the editor's image state. Returns undefined without
 	 * changing editor state when an attachment cannot be processed.
 	 */
-	private async takeEditorImages(): Promise<ImageContent[] | undefined> {
-		const attachments = this.editor.getImageAttachments?.() ?? [];
+	/**
+	 * Take pending editor image attachments for a submitted message: resolve the
+	 * `[Image N]` markers in the submitted text against the pending attachment
+	 * registry. The registry — not the live editor — is the source of truth here,
+	 * because the editor resets its text synchronously when Enter is pressed,
+	 * before the async submit handler runs. Returns undefined without changing
+	 * state when an attachment cannot be processed, so the caller can restore the
+	 * submitted text and let the user retry.
+	 */
+	private async takeEditorImages(submittedText: string): Promise<ImageContent[] | undefined> {
+		const markerIds = [...submittedText.matchAll(/\[Image (\d+)\]/g)].map((m) => Number(m[1]));
+		const attachments = [...new Set(markerIds)]
+			.map((id) => ({ id, path: this.pendingImageAttachments.get(id)?.path }))
+			.filter((a): a is { id: number; path: string } => a.path !== undefined);
 		const images: ImageContent[] = [];
 		for (const { id, path: filePath } of attachments) {
 			try {
@@ -3579,7 +3591,7 @@ export class InteractiveMode {
 					this.editor.setText("");
 					await this.session.prompt(text);
 				} else {
-					const images = await this.takeEditorImages();
+					const images = await this.takeEditorImages(text);
 					if (!images) {
 						this.restoreSubmittedEditorText(text);
 						return;
@@ -3593,7 +3605,7 @@ export class InteractiveMode {
 			// This handles extension commands (execute immediately), prompt template expansion, and queueing
 			if (this.session.isStreaming) {
 				this.editor.addToHistory?.(text);
-				const images = await this.takeEditorImages();
+				const images = await this.takeEditorImages(text);
 				if (!images) {
 					this.restoreSubmittedEditorText(text);
 					return;
@@ -3605,7 +3617,7 @@ export class InteractiveMode {
 				return;
 			}
 
-			const images = await this.takeEditorImages();
+			const images = await this.takeEditorImages(text);
 			if (!images) {
 				this.restoreSubmittedEditorText(text);
 				return;
@@ -4830,7 +4842,7 @@ export class InteractiveMode {
 				this.editor.setText("");
 				await this.session.prompt(text);
 			} else {
-				const images = await this.takeEditorImages();
+				const images = await this.takeEditorImages(text);
 				if (!images) return;
 				this.queueCompactionMessage(text, "followUp", images);
 			}
@@ -4841,7 +4853,7 @@ export class InteractiveMode {
 		// This handles extension commands (execute immediately), prompt template expansion, and queueing
 		if (this.session.isStreaming) {
 			this.editor.addToHistory?.(text);
-			const images = await this.takeEditorImages();
+			const images = await this.takeEditorImages(text);
 			if (!images) return;
 			this.editor.setText("");
 			await this.session.prompt(text, { streamingBehavior: "followUp", images });
@@ -4850,7 +4862,7 @@ export class InteractiveMode {
 		}
 		// If not streaming, Alt+Enter acts like regular Enter (trigger onSubmit)
 		else {
-			const images = await this.takeEditorImages();
+			const images = await this.takeEditorImages(text);
 			if (!images) return;
 			this.editor.setText("");
 			this.submitUserInput(text, images);
@@ -5046,11 +5058,14 @@ export class InteractiveMode {
 		const streamingIndex = this.streamingComponent
 			? this.chatContainer.children.indexOf(this.streamingComponent)
 			: -1;
-		if (streamingIndex >= 0) {
-			this.chatContainer.children.splice(streamingIndex, 0, component);
-		} else {
-			this.chatContainer.addChild(component);
-		}
+		const index = streamingIndex >= 0 ? streamingIndex : this.chatContainer.children.length;
+		const previous = this.chatContainer.children[index - 1];
+		// A single-command block keeps a blank line before the thinking summary that follows it.
+		const inserted =
+			previous instanceof ToolActivitySummaryComponent && previous.callCount === 1
+				? [new Spacer(1), component]
+				: [component];
+		this.chatContainer.children.splice(index, 0, ...inserted);
 		if (this.workingVisible && this.activeStatusIndicator?.kind === "thinking") {
 			this.showStatusIndicator(
 				new WorkingStatusIndicator(

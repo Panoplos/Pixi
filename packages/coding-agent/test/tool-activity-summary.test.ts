@@ -7,7 +7,8 @@ import { type ActivityToolCall, extractCommitHash, summarizeSection } from "../s
 import { ToolActivitySummaryComponent } from "../src/modes/interactive/components/tool-activity-summary.ts";
 import type { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { highlightCode, initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
+import { stripAnsi } from "../src/utils/ansi.ts";
 
 function call(id: string, toolName: string, args: Record<string, unknown> = {}): ActivityToolCall {
 	return { toolName, toolCallId: id, args };
@@ -275,5 +276,124 @@ describe("ToolActivitySummaryComponent hint markup", () => {
 		const summary = lines.join("\n");
 		// Hash gets the same bold treatment as the integer counts.
 		expect(summary).toContain("\u001b[1m9be7da6\u001b[22m");
+	});
+});
+
+describe("ToolActivitySummaryComponent running shell preview", () => {
+	function sectionHarness() {
+		initTheme("dark");
+		return new ToolActivitySummaryComponent(
+			{
+				createExecution: () =>
+					({
+						updateArgs: () => {},
+						setExpanded: () => {},
+						updateResult: () => {},
+						markExecutionStarted: () => {},
+						setArgsComplete: () => {},
+					}) as unknown as ToolExecutionComponent,
+			},
+			{ requestRender: () => {} } as never,
+		);
+	}
+
+	it("shows summary, elapsed time, command, output tail, and hidden-line hint while running", () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(0);
+		try {
+			const section = sectionHarness();
+			section.addOrUpdateTool("bash", "sh", {
+				command: "rg linter",
+				summary: "Locating the linter rules",
+			});
+			section.updateResult(
+				"sh",
+				{ content: [{ type: "text", text: "one\ntwo\nthree\nfour" }], isError: false },
+				true,
+			);
+
+			vi.setSystemTime(4_200);
+			const lines = section.render(80).map(stripAnsi);
+			const rendered = lines.join("\n");
+
+			expect(rendered).toContain("Locating the linter rules · 4.2s");
+			expect(rendered).toContain("$ rg linter");
+			expect(rendered).toContain("three");
+			expect(rendered).toContain("four");
+			expect(rendered).not.toContain("one");
+			expect(rendered).toContain("... (2 more lines, 4 total,");
+			expect(rendered).toContain("ctrl+o");
+			expect(rendered).not.toContain("ran 1 shell command");
+			// A running block keeps a blank line between its purpose and the command.
+			const header = lines.findIndex((line) => line.includes("Locating the linter rules"));
+			expect(lines[header + 1]?.trim()).toBe("");
+			expect(lines[header + 2]).toContain("$ rg linter");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("keeps a finished single command as ran 1 shell command with its duration and last output", () => {
+		const section = sectionHarness();
+		section.addOrUpdateTool("bash", "sh", { command: "rg linter", summary: "Locating the linter rules" });
+		section.updateResult("sh", {
+			content: [{ type: "text", text: "one\ntwo\nthree" }],
+			isError: false,
+			durationMs: 4_200,
+		});
+
+		const lines = section.render(80).map(stripAnsi);
+		const rendered = lines.join("\n");
+		expect(rendered).toContain("ran 1 shell command · 4.2s");
+		expect(rendered).toContain("$ rg linter");
+		expect(rendered).toContain("two");
+		expect(rendered).toContain("three");
+		expect(rendered).toContain("... (1 more lines, 3 total,");
+		expect(rendered).toContain("ctrl+o");
+		// The purpose label belongs to the run; a finished command shows its outcome.
+		expect(rendered).not.toContain("Locating the linter rules");
+		// A finished single command keeps a blank line between its title and the command.
+		const header = lines.findIndex((line) => line.includes("ran 1 shell command"));
+		expect(lines[header + 1]?.trim()).toBe("");
+		expect(lines[header + 2]).toContain("$ rg linter");
+	});
+
+	it("syntax-highlights the command line but not the output", () => {
+		chalk.level = 1;
+		const section = sectionHarness();
+		section.addOrUpdateTool("bash", "sh", { command: 'rg "linter"' });
+		section.updateResult("sh", {
+			content: [{ type: "text", text: "plain output" }],
+			isError: false,
+			durationMs: 1_000,
+		});
+
+		const raw = section.render(80).join("\n");
+		const highlighted = highlightCode('rg "linter"', "bash")[0]!;
+		expect(highlighted).toContain("\u001b[");
+		expect(raw).toContain(highlighted);
+		expect(raw).toContain(theme.fg("toolOutput", "plain output"));
+	});
+
+	it("adds the cumulative runtime of several commands to the aggregate summary", () => {
+		const section = sectionHarness();
+		section.addOrUpdateTool("bash", "a", { command: "first command" });
+		section.addOrUpdateTool("bash", "b", { command: "second command" });
+		section.updateResult("a", { content: [{ type: "text", text: "a" }], isError: false, durationMs: 1_200 });
+		section.updateResult("b", { content: [{ type: "text", text: "b" }], isError: false, durationMs: 2_300 });
+
+		const rendered = stripAnsi(section.render(80).join("\n"));
+		expect(rendered).toContain("ran 2 shell commands · 3.5s");
+		expect(rendered).not.toContain("$ first command");
+	});
+
+	it("adds a shell command's runtime to a mixed section summary", () => {
+		const section = sectionHarness();
+		section.addOrUpdateTool("read", "r", { path: "README.md" });
+		section.addOrUpdateTool("bash", "b", { command: "rg x" });
+		section.updateResult("b", { content: [{ type: "text", text: "match" }], isError: false, durationMs: 1_500 });
+
+		const rendered = stripAnsi(section.render(80).join("\n"));
+		expect(rendered).toContain("read 1 file, ran 1 shell command · 1.5s");
 	});
 });

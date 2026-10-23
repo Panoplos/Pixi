@@ -4,7 +4,7 @@ import { describe, expect, test, vi } from "vitest";
 import type { AgentSessionEvent } from "../src/core/agent-session.ts";
 import type { WorkingIndicatorOptions } from "../src/core/extensions/index.ts";
 import type { StatusIndicator } from "../src/modes/interactive/components/status-indicator.ts";
-import type { ToolActivitySummaryComponent } from "../src/modes/interactive/components/tool-activity-summary.ts";
+import { ToolActivitySummaryComponent } from "../src/modes/interactive/components/tool-activity-summary.ts";
 import type { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
@@ -153,5 +153,43 @@ describe("thinking indicator streaming", () => {
 		// Assistant commentary no longer splits the section.
 		expect(ctx.finalizeActiveToolSection).toHaveBeenCalledOnce();
 		ctx.activeStatusIndicator?.dispose();
+	});
+
+	test("puts a blank line before Thought only after a single-call section", () => {
+		initTheme("dark");
+		for (const callCount of [1, 2]) {
+			const ctx = makeCtx();
+			const section = new ToolActivitySummaryComponent(
+				{
+					createExecution: () =>
+						({
+							updateArgs: () => {},
+							setExpanded: () => {},
+							updateResult: () => {},
+							markExecutionStarted: () => {},
+							setArgsComplete: () => {},
+						}) as unknown as ToolExecutionComponent,
+				},
+				ctx.ui,
+			);
+			for (let index = 0; index < callCount; index++) {
+				const id = `sh-${index}`;
+				section.addOrUpdateTool("bash", id, { command: "ls" });
+				section.updateResult(id, {
+					content: [{ type: "text", text: "out" }],
+					isError: false,
+					durationMs: 1_000,
+				});
+			}
+			ctx.chatContainer.addChild(section);
+			ctx.thinkingStartMs = Date.now();
+
+			ctx.finalizeThinkingIndicator();
+
+			const lines = ctx.chatContainer.render(120).map(stripAnsi);
+			const thought = lines.findIndex((line) => line.includes("Thought for"));
+			expect(thought).toBeGreaterThan(0);
+			expect(lines[thought - 1]?.trim() === "").toBe(callCount === 1);
+		}
 	});
 });

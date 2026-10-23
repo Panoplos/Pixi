@@ -4,6 +4,7 @@
 
 ### Added
 
+- Shell commands now show their summary, syntax-highlighted command line, elapsed time, and the tail of their output while they run. A section with only one shell command keeps that block after it finishes, headed by `ran 1 shell command` and its runtime; a section with several tools shows the cumulative shell runtime on the aggregate summary. The `bash` and `powershell` tools accept an optional `summary` describing the command's purpose.
 - Added a Models Configuration reference generated from the `models.json` schema, listing all provider, model, model override, and compatibility fields ([#10790](https://github.com/earendil-works/pi/issues/10790))
 
 ### Changed
@@ -12,6 +13,7 @@
 
 ### Fixed
 
+- Fixed `/model` search showing unrelated providers when a query exactly names a provider (e.g. `bitdeer` fuzzy-matched models whose ids merely contained the same letters); an exact provider token now pins results to that provider
 - Fixed compaction and branch summaries failing with "generation hit the token cap" when reasoning used most of the fixed summary output limit. Summaries now use the model's output limit, and `compaction.reserveTokens` only controls when compaction starts ([#9512](https://github.com/earendil-works/pi/issues/9512), [#9075](https://github.com/earendil-works/pi/issues/9075)).
 - Fixed `models.schema.json` missing descriptions for provider and model fields, so editors showed no hints for them ([#10790](https://github.com/earendil-works/pi/issues/10790))
 
