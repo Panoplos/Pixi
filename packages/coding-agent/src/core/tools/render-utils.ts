@@ -114,6 +114,133 @@ export function formatToolCallWithArgs(title: string, args: unknown, theme: Them
 	return `${header} ${theme.fg("muted", preview)}`;
 }
 
+/** Longest first, so `2>&1` wins over `2>` and `&`. */
+const SHELL_OPERATORS = [
+	"<<<",
+	"2>&1",
+	"&>>",
+	"2>>",
+	"&>",
+	"2>",
+	">>",
+	"<<",
+	"&&",
+	"||",
+	"|&",
+	">&",
+	"<&",
+	">|",
+	";;",
+	"|",
+	";",
+	"&",
+	">",
+	"<",
+] as const;
+
+/** Operators after which a new simple command starts. Redirections are not here: their target is not a command. */
+const SHELL_COMMAND_SEPARATORS = new Set(["&&", "||", "|&", "|", ";;", ";", "&"]);
+
+/**
+ * Color a shell command for display without a full syntax rainbow: plain text keeps the tool title
+ * color, command names use the function color, and operators, redirections, and quoted strings use
+ * syntax colors. It is a display highlighter, not a shell parser.
+ */
+export function highlightShellCommand(command: string, theme: Theme): string {
+	let out = "";
+	let index = 0;
+	let expectCommand = true;
+	const plain = (text: string): string => theme.fg("toolTitle", text);
+	const operatorAt = (at: number): string | undefined =>
+		SHELL_OPERATORS.find((candidate) => command.startsWith(candidate, at));
+
+	while (index < command.length) {
+		const char = command[index];
+
+		// A `#` at a word boundary starts a comment.
+		if (char === "#" && (index === 0 || /\s/.test(command[index - 1]!))) {
+			const newline = command.indexOf("\n", index);
+			const end = newline === -1 ? command.length : newline;
+			out += theme.fg("syntaxComment", command.slice(index, end));
+			index = end;
+			expectCommand = true;
+			continue;
+		}
+
+		if (/\s/.test(char)) {
+			let end = index + 1;
+			while (end < command.length && /\s/.test(command[end])) end++;
+			const whitespace = command.slice(index, end);
+			out += plain(whitespace);
+			if (whitespace.includes("\n")) expectCommand = true;
+			index = end;
+			continue;
+		}
+
+		if (char === "\\") {
+			const end = Math.min(index + 2, command.length);
+			const escaped = command.slice(index, end);
+			out += expectCommand ? theme.fg("syntaxFunction", escaped) : plain(escaped);
+			// A line continuation does not end the command word.
+			if (command[index + 1] !== "\n") expectCommand = false;
+			index = end;
+			continue;
+		}
+
+		if (char === '"' || char === "'") {
+			const quote = char;
+			let end = index + 1;
+			while (end < command.length) {
+				if (quote === '"' && command[end] === "\\") {
+					end += 2;
+					continue;
+				}
+				if (command[end] === quote) {
+					end++;
+					break;
+				}
+				end++;
+			}
+			out += theme.fg("syntaxString", command.slice(index, end));
+			// A quoted command name ends the command word, but a quoted value after `NAME=` does not.
+			if (expectCommand && command[index - 1] !== "=") expectCommand = false;
+			index = end;
+			continue;
+		}
+
+		const operator = operatorAt(index);
+		if (operator !== undefined) {
+			out += theme.fg("syntaxKeyword", operator);
+			expectCommand = SHELL_COMMAND_SEPARATORS.has(operator);
+			index += operator.length;
+			continue;
+		}
+
+		let end = index;
+		while (end < command.length) {
+			const next = command[end];
+			if (/\s/.test(next) || next === '"' || next === "'") break;
+			if (next === "\\") {
+				end += 2;
+				continue;
+			}
+			if (operatorAt(end) !== undefined) break;
+			end++;
+		}
+		const word = command.slice(index, end);
+		const assignment = /^[A-Za-z_][A-Za-z0-9_]*=/.test(word);
+		if (expectCommand && !assignment) {
+			out += theme.fg("syntaxFunction", word);
+			expectCommand = false;
+		} else {
+			out += plain(word);
+		}
+		index = end;
+	}
+
+	return out;
+}
+
 /** Duration as `4.2s` below a minute, then `1m 30s` and `2h 3m 4s`. */
 export function formatToolDuration(ms: number): string {
 	const seconds = ms / 1000;

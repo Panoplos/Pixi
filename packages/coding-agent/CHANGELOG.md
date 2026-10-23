@@ -4,7 +4,7 @@
 
 ### Added
 
-- Shell commands now show their summary, syntax-highlighted command line, elapsed time, and the tail of their output while they run. A section with only one shell command keeps that block after it finishes, headed by `ran 1 shell command` and its runtime; a section with several tools shows the cumulative shell runtime on the aggregate summary. The `bash` and `powershell` tools accept an optional `summary` describing the command's purpose.
+- Shell commands now show their summary, command line with restrained shell highlighting (operators and quoted strings), elapsed time, and the tail of their output while they run. A section with only one shell command keeps that block after it finishes, headed by `ran 1 shell command` and its runtime; a section with several tools shows the cumulative shell runtime on the aggregate summary. The `bash` and `powershell` tools accept an optional `summary` describing the command's purpose.
 - Added a Models Configuration reference generated from the `models.json` schema, listing all provider, model, model override, and compatibility fields ([#10790](https://github.com/earendil-works/pi/issues/10790))
 
 ### Changed

@@ -9,10 +9,17 @@
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
 import { VisualLinePreview } from "../../../modes/interactive/components/visual-truncate.ts";
-import { highlightCode, theme } from "../../../modes/interactive/theme/theme.ts";
+import { theme } from "../../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
 import type { BashToolDetails } from "../bash.ts";
-import { getTextOutput, invalidArgText, startToolTimer, str, toolTimerText } from "../render-utils.ts";
+import {
+	getTextOutput,
+	highlightShellCommand,
+	invalidArgText,
+	startToolTimer,
+	str,
+	toolTimerText,
+} from "../render-utils.ts";
 import { DEFAULT_MAX_BYTES, formatSize } from "../truncate.ts";
 
 const BASH_PREVIEW_LINES = 5;
@@ -25,9 +32,9 @@ function formatShellCall(args: { command?: string; timeout?: number } | undefine
 		command === null
 			? invalidArgText(theme)
 			: command
-				? highlightCode(command, prompt === "PS>" ? "powershell" : "bash").join("\n")
+				? highlightShellCommand(command, theme)
 				: theme.fg("toolOutput", "...");
-	return `${theme.fg("toolTitle", theme.bold(`${prompt} `))}${commandDisplay}${timeoutSuffix}`;
+	return `${theme.fg("toolTitle", theme.bold(`${prompt} `))}${theme.bold(commandDisplay)}${timeoutSuffix}`;
 }
 function rebuildBashResultRenderComponent(
 	component: Container,

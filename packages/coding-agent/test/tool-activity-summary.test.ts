@@ -7,7 +7,7 @@ import { type ActivityToolCall, extractCommitHash, summarizeSection } from "../s
 import { ToolActivitySummaryComponent } from "../src/modes/interactive/components/tool-activity-summary.ts";
 import type { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
-import { highlightCode, initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 function call(id: string, toolName: string, args: Record<string, unknown> = {}): ActivityToolCall {
@@ -356,23 +356,6 @@ describe("ToolActivitySummaryComponent running shell preview", () => {
 		const header = lines.findIndex((line) => line.includes("ran 1 shell command"));
 		expect(lines[header + 1]?.trim()).toBe("");
 		expect(lines[header + 2]).toContain("$ rg linter");
-	});
-
-	it("syntax-highlights the command line but not the output", () => {
-		chalk.level = 1;
-		const section = sectionHarness();
-		section.addOrUpdateTool("bash", "sh", { command: 'rg "linter"' });
-		section.updateResult("sh", {
-			content: [{ type: "text", text: "plain output" }],
-			isError: false,
-			durationMs: 1_000,
-		});
-
-		const raw = section.render(80).join("\n");
-		const highlighted = highlightCode('rg "linter"', "bash")[0]!;
-		expect(highlighted).toContain("\u001b[");
-		expect(raw).toContain(highlighted);
-		expect(raw).toContain(theme.fg("toolOutput", "plain output"));
 	});
 
 	it("adds the cumulative runtime of several commands to the aggregate summary", () => {

@@ -6,8 +6,8 @@ import {
 	isGitCommitCommand,
 	summarizeSection,
 } from "../../../core/tool-activity-summary.ts";
-import { formatToolDuration, getTextOutput, str } from "../../../core/tools/render-utils.ts";
-import { highlightCode, theme } from "../theme/theme.ts";
+import { formatToolDuration, getTextOutput, highlightShellCommand, str } from "../../../core/tools/render-utils.ts";
+import { theme } from "../theme/theme.ts";
 import { BODY_JOINT, BODY_JOINT_WIDTH } from "./diff.ts";
 import { keyHint } from "./keybinding-hints.ts";
 import type { ToolExecutionComponent } from "./tool-execution.ts";
@@ -60,12 +60,10 @@ function renderShellDetail(call: SectionCall, width: number, finishedTitle?: str
 	const prompt = call.toolName === "powershell" ? "PS>" : "$";
 	const command = str(args.command) ?? "";
 	const commandText = command ? command.replace(/\n/g, " ").trim() : "...";
-	const commandDisplay = command
-		? (highlightCode(commandText, call.toolName === "powershell" ? "powershell" : "bash")[0] ?? commandText)
-		: theme.fg("toolOutput", "...");
+	const commandDisplay = command ? highlightShellCommand(commandText, theme) : theme.fg("toolOutput", "...");
 	lines.push(
 		truncateToWidth(
-			`${theme.fg("muted", BODY_JOINT)}${theme.fg("toolTitle", theme.bold(`${prompt} `))}${commandDisplay}`,
+			`${theme.fg("muted", BODY_JOINT)}${theme.fg("toolTitle", theme.bold(`${prompt} `))}${theme.bold(commandDisplay)}`,
 			width,
 			"...",
 			true,
