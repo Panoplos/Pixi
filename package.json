@@ -3,7 +3,9 @@
 	"private": true,
 	"type": "module",
 	"pi": {
-		"extensions": ["./packages/coding-agent/examples/extensions/destructive-tool-guard.ts"]
+		"extensions": [
+			"./packages/coding-agent/examples/extensions/destructive-tool-guard.ts"
+		]
 	},
 	"workspaces": [
 		"packages/*",
@@ -76,6 +78,7 @@
 	},
 	"version": "0.0.3",
 	"overrides": {
-		"protobufjs": "7.6.6"
+		"protobufjs": "7.6.6",
+		"vite": "8.3.4"
 	}
 }
