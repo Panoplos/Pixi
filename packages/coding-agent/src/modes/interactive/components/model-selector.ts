@@ -313,15 +313,32 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 	private filterModels(query: string): void {
 		if (query) {
-			const filtered = fuzzyFilter(this.activeModels, query, (item) => {
-				const defaultText = this.isDefaultModel(item.model) ? " default" : "";
-				return `${getModelSelectorSearchText({ id: item.id, provider: item.provider, name: item.model.name })}${defaultText}`;
-			});
+			// A token that exactly names a provider (e.g. "bitdeer") pins the search to
+			// that provider; fuzzy matching would otherwise scatter the token across
+			// unrelated model ids that merely contain the same letters.
+			const tokens = query
+				.trim()
+				.toLowerCase()
+				.split(/[\s/]+/)
+				.filter((token) => token.length > 0);
+			const providers = new Set(this.activeModels.map((item) => item.provider.toLowerCase()));
+			const providerTokens = tokens.filter((token) => providers.has(token));
+			const pool =
+				providerTokens.length > 0
+					? this.activeModels.filter((item) => providerTokens.includes(item.provider.toLowerCase()))
+					: this.activeModels;
+			const fuzzyQuery = tokens.filter((token) => !providerTokens.includes(token)).join(" ");
+			const filtered = fuzzyQuery
+				? fuzzyFilter(pool, fuzzyQuery, (item) => {
+						const defaultText = this.isDefaultModel(item.model) ? " default" : "";
+						return `${getModelSelectorSearchText({ id: item.id, provider: item.provider, name: item.model.name })}${defaultText}`;
+					})
+				: pool;
 			if (this.isDefaultSearch(query)) {
 				const defaultItems = this.activeModels.filter((item) => this.isDefaultModel(item.model));
 				const defaultKeys = new Set(defaultItems.map((item) => `${item.provider}\0${item.id}`));
 				this.filteredModels = [
-					...defaultItems,
+					...defaultItems.filter((item) => filtered.includes(item)),
 					...filtered.filter((item) => !defaultKeys.has(`${item.provider}\0${item.id}`)),
 				];
 			} else {

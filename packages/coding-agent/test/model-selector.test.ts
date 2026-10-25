@@ -1,6 +1,8 @@
+import type { Model } from "@earendil-works/pi-ai";
 import { setKeybindings, type TUI } from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
+import type { ModelRuntime } from "../src/core/model-runtime.ts";
 import { ModelSelectorComponent } from "../src/modes/interactive/components/model-selector.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
@@ -101,6 +103,49 @@ describe("model selector", () => {
 
 		selector.handleInput("a");
 		expect(rendered()).not.toContain("(session model)");
+		selector.dispose();
+	});
+
+	it("pins an exact provider token to that provider's models", async () => {
+		// Regression: typing "bitdeer" fuzzy-matched unrelated models whose ids merely
+		// contained the letters b/i/t/d/e/e/r somewhere.
+		const fauxModel: Model<any> = {
+			id: "alpha-model",
+			name: "Alpha Model",
+			api: "faux-api",
+			provider: "faux",
+			baseUrl: "https://faux.test/v1",
+			reasoning: false,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 128_000,
+			maxTokens: 4096,
+		};
+		const bitdeerModel: Model<any> = {
+			...fauxModel,
+			id: "deepseek-ai/DeepSeek-V4-Flash",
+			name: "DeepSeek V4 Flash",
+			provider: "bitdeer",
+		};
+		const modelRuntime = {
+			getAvailableSnapshot: () => [fauxModel, bitdeerModel],
+			getModel: () => undefined,
+			refresh: async () => ({ aborted: false, errors: new Map() }),
+		} as unknown as ModelRuntime;
+		const selector = new ModelSelectorComponent(createFakeTui(), modelRuntime, {
+			scopedModels: [],
+			onSelect: () => {},
+			onCancel: () => {},
+		});
+
+		const renderedIds = (): string[] =>
+			stripAnsi(selector.render(120).join("\n"))
+				.split("\n")
+				.filter((line) => line.includes(" ["))
+				.map((line) => line.trim());
+
+		for (const char of "bitdeer") selector.handleInput(char);
+		expect(renderedIds()).toEqual(["→   deepseek-ai/DeepSeek-V4-Flash [bitdeer]"]);
 		selector.dispose();
 	});
 
