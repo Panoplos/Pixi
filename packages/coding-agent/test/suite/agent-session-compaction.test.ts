@@ -549,6 +549,64 @@ describe("AgentSession compaction characterization", () => {
 		},
 	);
 
+	it("compacts between turns when a per-model compaction boundary is crossed", async () => {
+		const largeTool: AgentTool = {
+			name: "large_result",
+			label: "Large result",
+			description: "Returns enough content to cross the compaction boundary",
+			parameters: Type.Object({}),
+			execute: async () => ({
+				content: [{ type: "text", text: `large-tool-result:${"x".repeat(6800)}` }],
+				details: {},
+			}),
+		};
+		const harness = await createHarness({
+			models: [{ id: "faux-1", contextWindow: 100_000, maxTokens: 100 }],
+			settings: {
+				// The ordinary reserve alone never triggers; only the per-model boundary does.
+				compaction: { enabled: true, reserveTokens: 0, keepRecentTokens: 200 },
+				modelContexts: { "faux/faux-1": { compactionBoundary: 1200 } },
+			},
+			tools: [largeTool],
+			extensionFactories: [
+				(pi) => {
+					pi.on("session_before_compact", (event) => ({
+						compaction: {
+							summary: "compacted history",
+							firstKeptEntryId: event.preparation.firstKeptEntryId,
+							tokensBefore: event.preparation.tokensBefore,
+							details: {},
+						},
+					}));
+				},
+			],
+		});
+		harnesses.push(harness);
+		let resumedRequest = "";
+		harness.setResponses([
+			fauxAssistantMessage("seed one"),
+			fauxAssistantMessage("seed two"),
+			fauxAssistantMessage(fauxToolCall("large_result", {}), { stopReason: "toolUse" }),
+			(context) => {
+				resumedRequest = JSON.stringify(context.messages);
+				return fauxAssistantMessage("finished after compaction");
+			},
+		]);
+
+		await harness.session.prompt("seed one");
+		await harness.session.prompt("seed two");
+		await harness.session.prompt("run the large tool");
+
+		// The boundary compaction runs between the tool result and the next assistant response,
+		// so the run continues in the same turn instead of ending after the compaction.
+		const compactions = harness.eventsOfType("compaction_start");
+		expect(compactions.length).toBeGreaterThan(0);
+		expect(compactions.every((event) => event.reason === "threshold")).toBe(true);
+		expect(harness.faux.state.callCount).toBe(4);
+		expect(resumedRequest).toContain("compacted history");
+		expect(harness.session.getLastAssistantText()).toBe("finished after compaction");
+	});
+
 	it("includes steering queued during compaction in the resumed assistant request", async () => {
 		const largeTool: AgentTool = {
 			name: "large_result",

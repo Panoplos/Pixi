@@ -769,10 +769,13 @@ export class AgentSession {
 	/** Whether `projection`, the current session projection, exceeds the compaction threshold of `model`. */
 	private _exceedsCompactionThreshold(model: Model<any>, projection: SessionProjection): boolean {
 		if (model.contextWindow <= 0) return false;
+		const contextWindow = model.contextWindow;
 		return shouldCompact(
 			estimateProjectedContextTokens(projection, this.sessionManager.getBranch()).tokens,
-			model.contextWindow,
-			this.settingsManager.getCompactionSettings(this.model),
+			contextWindow,
+			// Same effective settings as the post-run check, so a per-model compaction boundary
+			// also triggers between turns instead of only after the provider rejects the request.
+			this._effectiveCompactionSettings(this.settingsManager.getCompactionSettings(model), contextWindow),
 		);
 	}
 
@@ -3142,7 +3145,7 @@ export class AgentSession {
 	 * interception.
 	 *
 	 * @param reason Automatic trigger selected by `_checkCompaction()`
-	 * @param willRetry Whether to continue the interrupted turn after overflow compaction
+	 * @param willRetry Whether to continue the interrupted turn after compaction
 	 * @returns Whether the post-run loop should call `agent.continue()`
 	 */
 	private async _runAutoCompaction(reason: "overflow" | "threshold", willRetry: boolean): Promise<boolean> {
