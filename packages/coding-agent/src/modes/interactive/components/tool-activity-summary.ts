@@ -13,6 +13,8 @@ import { keyHint } from "./keybinding-hints.ts";
 import type { ToolExecutionComponent } from "./tool-execution.ts";
 import { truncateToVisualLines } from "./visual-truncate.ts";
 
+const SHELL_PREVIEW_LINES = 4;
+
 export interface ToolActivitySummaryOptions {
 	/** Creates a `ToolExecutionComponent` for one tool call inside this section. */
 	createExecution: (toolName: string, toolCallId: string, args: unknown) => ToolExecutionComponent;
@@ -87,13 +89,13 @@ function renderShellDetail(call: SectionCall, width: number, finishedTitle?: str
 			.split("\n")
 			.map((line) => theme.fg("toolOutput", line))
 			.join("\n");
-		const preview = truncateToVisualLines(styledOutput, 2, regionWidth, 0, "end");
+		const preview = truncateToVisualLines(styledOutput, SHELL_PREVIEW_LINES, regionWidth, 0, "end");
 		const indent = " ".repeat(indentWidth);
 		for (const line of preview.visualLines) lines.push(indent + line);
 		if (preview.skippedCount > 0) {
 			const total = preview.skippedCount + preview.visualLines.length;
 			const hint = `${theme.fg("muted", `... (${preview.skippedCount} more lines, ${total} total,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
-			lines.push(indent + truncateToWidth(hint, regionWidth, "...", true));
+			lines.push(truncateToWidth(hint, width, "...", true));
 		}
 	}
 

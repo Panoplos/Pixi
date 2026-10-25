@@ -309,7 +309,7 @@ describe("ToolActivitySummaryComponent running shell preview", () => {
 			});
 			section.updateResult(
 				"sh",
-				{ content: [{ type: "text", text: "one\ntwo\nthree\nfour" }], isError: false },
+				{ content: [{ type: "text", text: "one\ntwo\nthree\nfour\nfive\nsix" }], isError: false },
 				true,
 			);
 
@@ -322,7 +322,9 @@ describe("ToolActivitySummaryComponent running shell preview", () => {
 			expect(rendered).toContain("three");
 			expect(rendered).toContain("four");
 			expect(rendered).not.toContain("one");
-			expect(rendered).toContain("... (2 more lines, 4 total,");
+			expect(rendered).not.toContain("two");
+			expect(rendered).toContain("... (2 more lines, 6 total,");
+			expect(lines.find((line) => line.includes("more lines"))?.startsWith("... (")).toBe(true);
 			expect(rendered).toContain("ctrl+o");
 			expect(rendered).not.toContain("ran 1 shell command");
 			// A running block keeps a blank line between its purpose and the command.
@@ -338,7 +340,7 @@ describe("ToolActivitySummaryComponent running shell preview", () => {
 		const section = sectionHarness();
 		section.addOrUpdateTool("bash", "sh", { command: "rg linter", summary: "Locating the linter rules" });
 		section.updateResult("sh", {
-			content: [{ type: "text", text: "one\ntwo\nthree" }],
+			content: [{ type: "text", text: "one\ntwo\nthree\nfour\nfive" }],
 			isError: false,
 			durationMs: 4_200,
 		});
@@ -349,7 +351,8 @@ describe("ToolActivitySummaryComponent running shell preview", () => {
 		expect(rendered).toContain("$ rg linter");
 		expect(rendered).toContain("two");
 		expect(rendered).toContain("three");
-		expect(rendered).toContain("... (1 more lines, 3 total,");
+		expect(rendered).toContain("... (1 more lines, 5 total,");
+		expect(lines.find((line) => line.includes("more lines"))?.startsWith("... (")).toBe(true);
 		expect(rendered).toContain("ctrl+o");
 		// The purpose label belongs to the run; a finished command shows its outcome.
 		expect(rendered).not.toContain("Locating the linter rules");
