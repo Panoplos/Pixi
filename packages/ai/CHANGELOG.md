@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Fixed Bitdeer's model catalog lagging new releases: models listed on Bitdeer's public site API but missing from the key-gated `/v1/models` endpoint are now appended during refresh, and the no-key seed catalog was updated to the current measured site list (adds DeepSeek-V4.1-Flash-1017 and Nemotron 3.5 Super VL, drops Kimi-K3)
 - Fixed whitespace-only tool output (for example a bare `\r\n` from bash) being sent as-is to OpenAI Completions, OpenAI Responses, and Google providers; it now uses the same placeholder as empty output, since some providers reject whitespace-only tool content with a 400 ([#8720](https://github.com/earendil-works/pi/issues/8720))
 - Fixed automatic retry not triggering for gateway upstream failures such as `upstream_error: Upstream request failed`, `upstream_stream_read_error`, and `Upstream HTTP/2 stream failed` ([#10920](https://github.com/earendil-works/pi/issues/10920))
 

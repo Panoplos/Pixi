@@ -79,15 +79,24 @@ function isChatModelId(id: string): boolean {
 
 /** Chat models measured on Bitdeer's public site API (ListModels + GetModel per model). Used when
  * generate-models or refresh has no API key, and as fallback when live fetches fail. Do not substitute
- * vendor reference numbers: Bitdeer caps context (e.g. 256K for GLM-5.3/Kimi-K3) and prices at its own rates. */
+ * vendor reference numbers: Bitdeer caps context (e.g. 1M for DeepSeek/GLM-5.3) and prices at its own rates. */
 export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 	return [
+		bitdeerModel({
+			id: "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+			name: "DeepSeek V4.1 Flash 1017",
+			reasoning: true,
+			input: ["text", "image"],
+			cost: { input: 14.4, output: 57.6, cacheRead: 0.29, cacheWrite: 0 },
+			contextWindow: 1_048_576,
+			maxTokens: 393_216,
+		}),
 		bitdeerModel({
 			id: "deepseek-ai/DeepSeek-V4.1-Flash",
 			name: "DeepSeek V4.1 Flash",
 			reasoning: true,
-			input: ["text"],
-			cost: { input: 15, output: 120, cacheRead: 0.3, cacheWrite: 0 },
+			input: ["text", "image"],
+			cost: { input: 14.4, output: 57.6, cacheRead: 0.29, cacheWrite: 0 },
 			contextWindow: 1_048_576,
 			maxTokens: 393_216,
 		}),
@@ -106,8 +115,8 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			reasoning: true,
 			canDisableReasoning: false,
 			input: ["text"],
-			cost: { input: 140, output: 440, cacheRead: 14, cacheWrite: 0 },
-			contextWindow: 262_144,
+			cost: { input: 63, output: 198, cacheRead: 11.7, cacheWrite: 0 },
+			contextWindow: 1_048_576,
 			maxTokens: 131_072,
 		}),
 		bitdeerModel({
@@ -116,19 +125,9 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			reasoning: true,
 			canDisableReasoning: false,
 			input: ["text", "image"],
-			cost: { input: 7.5, output: 25, cacheRead: 1.5, cacheWrite: 0 },
-			contextWindow: 262_144,
+			cost: { input: 8.25, output: 27.5, cacheRead: 1.65, cacheWrite: 0 },
+			contextWindow: 1_048_576,
 			maxTokens: 131_072,
-		}),
-		bitdeerModel({
-			id: "moonshotai/Kimi-K3",
-			name: "Kimi K3",
-			reasoning: true,
-			canDisableReasoning: false,
-			input: ["text", "image"],
-			cost: { input: 266, output: 1330, cacheRead: 27.55, cacheWrite: 0 },
-			contextWindow: 262_144,
-			maxTokens: 1_048_576,
 		}),
 		bitdeerModel({
 			id: "Qwen/Qwen3.8-27B",
@@ -138,6 +137,16 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			cost: { input: 40, output: 240, cacheRead: 8, cacheWrite: 0 },
 			contextWindow: 262_144,
 			maxTokens: 131_072,
+		}),
+		bitdeerModel({
+			id: "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B",
+			name: "NVIDIA Nemotron 3.5 Super VL",
+			reasoning: true,
+			input: ["text", "image"],
+			// Site API reports no maxOutputTokens; 32_768 is the documented max_tokens default.
+			cost: { input: 10, output: 40, cacheRead: 8, cacheWrite: 0 },
+			contextWindow: 262_144,
+			maxTokens: 32_768,
 		}),
 	];
 }
@@ -189,6 +198,9 @@ function siteModelKey(name: string): string {
 }
 
 interface BitdeerSiteModelMeta {
+	/** Site model name, e.g. `deepseek-ai/DeepSeek-V4.1-Flash-1017`. Can be fresher than the
+	 * key-gated `/v1/models` endpoint, which lags behind new releases. */
+	id: string;
 	contextWindow: number;
 	maxTokens: number;
 	cost: Model<"openai-completions">["cost"];
@@ -219,6 +231,7 @@ export async function fetchBitdeerSiteModelMeta(signal?: AbortSignal): Promise<M
 			if (!isRecord(detail)) return;
 			const tags = Array.isArray(detail.tags) ? detail.tags : [];
 			meta.set(siteModelKey(raw.name), {
+				id: raw.name,
 				contextWindow: finiteNumber(detail.maxContextLen, 0),
 				maxTokens: finiteNumber(detail.maxOutputTokens, 0),
 				cost: {
@@ -282,6 +295,27 @@ export async function fetchBitdeerChatModels(
 	if (!response.ok) throw new Error(`Bitdeer API returned ${response.status}`);
 	const models = parseBitdeerChatModels(await response.json());
 	if (models.length === 0) return getBitdeerSeedModels();
-	if (siteMeta) applyBitdeerSiteMeta(models, siteMeta);
+	if (siteMeta) {
+		applyBitdeerSiteMeta(models, siteMeta);
+		// The key-gated /v1/models endpoint lags behind the public site list, so append
+		// site-only chat models to make new releases selectable right away.
+		const known = new Set(models.map((model) => siteModelKey(model.id)));
+		for (const site of siteMeta.values()) {
+			if (known.has(siteModelKey(site.id)) || !isChatModelId(site.id)) continue;
+			const id = site.id.split("(")[0]?.trim() || site.id;
+			models.push(
+				bitdeerModel({
+					id,
+					name: displayName(id),
+					reasoning: true,
+					canDisableReasoning: site.canDisableReasoning,
+					input: site.hasVision ? ["text", "image"] : ["text"],
+					cost: site.cost,
+					contextWindow: site.contextWindow > 0 ? site.contextWindow : 128_000,
+					maxTokens: site.maxTokens > 0 ? site.maxTokens : 4096,
+				}),
+			);
+		}
+	}
 	return models;
 }

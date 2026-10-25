@@ -18,12 +18,13 @@ describe("Bitdeer catalog", () => {
 	it("exposes the documented launch catalog without an API key", () => {
 		const models = getBitdeerSeedModels();
 		expect(models.map((model) => model.id)).toEqual([
+			"deepseek-ai/DeepSeek-V4.1-Flash-1017",
 			"deepseek-ai/DeepSeek-V4.1-Flash",
 			"deepseek-ai/DeepSeek-V4-Flash",
 			"zai-org/GLM-5.3",
 			"zai-org/GLM-5.3-Flash",
-			"moonshotai/Kimi-K3",
 			"Qwen/Qwen3.8-27B",
+			"nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B",
 		]);
 		expect(models[0]).toMatchObject({
 			provider: "bitdeer",
@@ -31,7 +32,7 @@ describe("Bitdeer catalog", () => {
 			baseUrl: "https://api-inference.bitdeer.ai/v1",
 			reasoning: true,
 			thinkingLevelMap: { off: "none" },
-			input: ["text"],
+			input: ["text", "image"],
 			compat: {
 				supportsStore: false,
 				supportsDeveloperRole: false,
@@ -42,15 +43,15 @@ describe("Bitdeer catalog", () => {
 		expect(models[0]).toMatchObject({
 			contextWindow: 1_048_576,
 			maxTokens: 393_216,
-			cost: { input: 15, output: 120 },
+			cost: { input: 14.4, output: 57.6, cacheRead: 0.29 },
 		});
 	});
 
 	it("marks models that cannot disable reasoning with an unrepresentable off level", () => {
 		const byId = new Map(getBitdeerSeedModels().map((model) => [model.id, model]));
-		// Measured on the live endpoint: GLM-5.3/Flash and Kimi-K3 400 on reasoning_effort "none".
+		// Measured on the live endpoint: GLM-5.3/Flash 400 on reasoning_effort "none".
+		expect(byId.get("zai-org/GLM-5.3")?.thinkingLevelMap).toEqual({ off: null });
 		expect(byId.get("zai-org/GLM-5.3-Flash")?.thinkingLevelMap).toEqual({ off: null });
-		expect(byId.get("moonshotai/Kimi-K3")?.thinkingLevelMap).toEqual({ off: null });
 		expect(byId.get("deepseek-ai/DeepSeek-V4.1-Flash")?.thinkingLevelMap).toEqual({ off: "none" });
 	});
 
@@ -151,6 +152,62 @@ describe("Bitdeer catalog", () => {
 		});
 		// The dynamic catalog replaces the refreshed list; static seed entries stay registered.
 		expect((await modelsStore.read("bitdeer"))?.models.map((model) => model.id)).toEqual(["moonshotai/Kimi-K3"]);
+	});
+
+	// The key-gated /v1/models endpoint lags the public site list; site-only models are appended.
+	it("appends site-only chat models that /v1/models does not list yet", async () => {
+		vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+			const url = String(input);
+			if (url === BITDEER_MODELS_URL) {
+				return new Response(JSON.stringify({ data: [{ id: "zai-org/GLM-5.3", name: "GLM 5.3" }] }), {
+					status: 200,
+				});
+			}
+			if (url === BITDEER_SITE_LIST_URL) {
+				return new Response(
+					JSON.stringify({
+						models: [
+							{ modelId: "mdl-new", name: "deepseek-ai/DeepSeek-V4.1-Flash-1017" },
+							{ modelId: "mdl-embed", name: "BAAI/bge-m3" },
+							{ modelId: "mdl-image", name: "byteplus/Seedream-5.0-Lite" },
+						],
+					}),
+					{ status: 200 },
+				);
+			}
+			return new Response(
+				JSON.stringify({
+					maxContextLen: 262_144,
+					maxOutputTokens: 32_768,
+					inputPrice: 14.4,
+					outputPrice: 57.6,
+					cachedInputPrice: 0.29,
+					canDisableReasoning: true,
+					tags: [{ tagId: "image-to-text" }],
+				}),
+				{ status: 200 },
+			);
+		});
+
+		const credentials = new InMemoryCredentialStore();
+		await credentials.modify("bitdeer", async () => ({ type: "api_key", key: "sk-bitdeer-test" }));
+		const modelsStore = new InMemoryModelsStore();
+		const models = createModels({ credentials, modelsStore });
+		models.setProvider(bitdeerProvider());
+
+		expect((await models.refresh({ providers: ["bitdeer"] })).errors.size).toBe(0);
+		expect(models.getModel("bitdeer", "deepseek-ai/DeepSeek-V4.1-Flash-1017")).toMatchObject({
+			provider: "bitdeer",
+			reasoning: true,
+			thinkingLevelMap: { off: "none" },
+			input: ["text", "image"],
+			contextWindow: 262_144,
+			maxTokens: 32_768,
+			cost: { input: 14.4, output: 57.6, cacheRead: 0.29, cacheWrite: 0 },
+		});
+		// Embeddings and image models from the site list are not appended.
+		expect(models.getModel("bitdeer", "BAAI/bge-m3")).toBeUndefined();
+		expect(models.getModel("bitdeer", "byteplus/Seedream-5.0-Lite")).toBeUndefined();
 	});
 
 	it("falls back to the seed catalog when the live payload is unusable", async () => {
