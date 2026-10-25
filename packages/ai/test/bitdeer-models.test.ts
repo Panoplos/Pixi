@@ -134,11 +134,8 @@ describe("Bitdeer catalog", () => {
 		const models = createModels({ credentials, modelsStore });
 		models.setProvider(bitdeerProvider());
 
-		expect(models.getModel("bitdeer", "moonshotai/Kimi-K3")).toMatchObject({
-			cost: { input: 266, output: 1330, cacheRead: 27.55, cacheWrite: 0 },
-			contextWindow: 262_144,
-			maxTokens: 1_048_576,
-		});
+		// Kimi K3 left the no-key seed list; the credentialed refresh registers it from the site list.
+		expect(models.getModel("bitdeer", "moonshotai/Kimi-K3")).toBeUndefined();
 		expect((await models.refresh({ providers: ["bitdeer"] })).errors.size).toBe(0);
 		// Live site metadata replaces the seeded limits and pricing.
 		expect(models.getModel("bitdeer", "moonshotai/Kimi-K3")).toMatchObject({

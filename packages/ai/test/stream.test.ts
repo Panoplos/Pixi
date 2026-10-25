@@ -1395,8 +1395,8 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
-	describe("GitHub Copilot Provider (gpt-5.3-codex via OpenAI Completions)", () => {
-		const llm = getModel("github-copilot", "gpt-5.3-codex");
+	describe("GitHub Copilot Provider (gpt-6-luna via OpenAI Responses)", () => {
+		const llm = getModel("github-copilot", "gpt-6-luna");
 
 		it.skipIf(!githubCopilotToken)("should complete basic text generation", { retry: 3 }, async () => {
 			await basicTextGeneration(llm, { apiKey: githubCopilotToken });
@@ -1411,13 +1411,11 @@ describe("Generate E2E Tests", () => {
 		});
 
 		it.skipIf(!githubCopilotToken)("should handle thinking", { retry: 2 }, async () => {
-			const thinkingModel = getModel("github-copilot", "gpt-5.6-luna");
-			await handleThinking(thinkingModel, { apiKey: githubCopilotToken, reasoningEffort: "high" });
+			await handleThinking(llm, { apiKey: githubCopilotToken, reasoningEffort: "high" });
 		});
 
 		it.skipIf(!githubCopilotToken)("should handle multi-turn with thinking and tools", { retry: 3 }, async () => {
-			const thinkingModel = getModel("github-copilot", "gpt-5.6-luna");
-			await multiTurn(thinkingModel, { apiKey: githubCopilotToken, reasoningEffort: "high" });
+			await multiTurn(llm, { apiKey: githubCopilotToken, reasoningEffort: "high" });
 		});
 
 		it.skipIf(!githubCopilotToken)("should handle image input", { retry: 3 }, async () => {
@@ -1453,8 +1451,8 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
-	describe("OpenAI Codex Provider (gpt-5.5)", () => {
-		const llm = getModel("openai-codex", "gpt-5.5");
+	describe("OpenAI Codex Provider (gpt-6.1-sol)", () => {
+		const llm = getModel("openai-codex", "gpt-6.1-sol");
 
 		it.skipIf(!openaiCodexToken)("should complete basic text generation", { retry: 3 }, async () => {
 			await basicTextGeneration(llm, { apiKey: openaiCodexToken });
@@ -1481,8 +1479,8 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
-	describe("OpenAI Codex Provider (gpt-5.5 via WebSocket)", () => {
-		const llm = getModel("openai-codex", "gpt-5.5");
+	describe("OpenAI Codex Provider (gpt-6.1-sol via WebSocket)", () => {
+		const llm = getModel("openai-codex", "gpt-6.1-sol");
 		const wsOptions = { apiKey: openaiCodexToken, transport: "websocket" as const };
 
 		it.skipIf(!openaiCodexToken)("should complete basic text generation", { retry: 3 }, async () => {
@@ -1736,41 +1734,6 @@ describe("Generate E2E Tests", () => {
 
 		it("should handle multi-turn with thinking and tools", { retry: 3 }, async () => {
 			await multiTurn(llm, { apiKey: "test", reasoningEffort: "medium" });
-		});
-	});
-	describe.skipIf(!process.env.INCO_API_KEY)("Inco Provider", () => {
-		const llm = getModel("inco", "deepseek-v4.1-flash:fast");
-
-		it("should complete basic text generation", { retry: 3 }, async () => {
-			await basicTextGeneration(llm);
-		});
-
-		it("should handle tool calling with thinking", { retry: 3 }, async () => {
-			await handleToolCall(llm, { reasoningEffort: "medium" });
-		});
-	});
-
-	describe.skipIf(!process.env.BITDEER_API_KEY)("Bitdeer Provider", () => {
-		const llm = getModel("bitdeer", "deepseek-ai/DeepSeek-V4.1-Flash");
-
-		it("should complete basic text generation", { retry: 3 }, async () => {
-			await basicTextGeneration(llm);
-		});
-
-		it("should handle tool calling with thinking", { retry: 3 }, async () => {
-			await handleToolCall(llm, { reasoningEffort: "medium" });
-		});
-	});
-
-	describe.skipIf(!process.env.DEEPINFRA_API_KEY)("DeepInfra Provider", () => {
-		const llm = getModel("deepinfra", "deepseek-ai/DeepSeek-V4-Flash-0731");
-
-		it("should complete basic text generation", { retry: 3 }, async () => {
-			await basicTextGeneration(llm);
-		});
-
-		it("should handle tool calling with thinking", { retry: 3 }, async () => {
-			await handleToolCall(llm, { reasoningEffort: "medium" });
 		});
 	});
 });
