@@ -1,0 +1,665 @@
+diff --git a/README.md b/README.md
+index b3f873b..ebaa664 100644
+--- a/README.md
++++ b/README.md
+@@ -76,10 +76,10 @@ Details, errors and join rules: [docs/connected-windows.md](docs/connected-windo
+ | Role | Default | Change with |
+ | --- | --- | --- |
+ | Main agent | Whatever is selected in Pi, then the profile's last pick | `/model` |
+-| Subagents | Anthropic Opus 5.5, high | `/optchat agents model` |
+-| Compactor (summaries, imports, handoffs) | Anthropic Sonnet 5.5, medium | `/optchat model` |
++| Subagents | Pi's model, at its thinking level | `/optchat agents model` |
++| Compactor (summaries, imports, handoffs) | Pi's model, at its thinking level | `/optchat model` |
+ 
+-All three are saved per profile. The main agent's model and thinking level are saved whenever you change them in Pi and picked again when the profile opens, unless the saved model is no longer available. This includes resumed sessions: the profile's pick replaces the one the session last used. On Pi's command line, `--model` (or `--provider`) keeps that model, `--thinking` that level, and `--models` keeps a saved model only if it is in that list. Subagent and compactor settings do not follow the main model. If you use other providers, change them before chatting. Authentication uses Pi's existing provider login.
++All three are saved per profile. The main agent's model and thinking level are saved whenever you change them in Pi and picked again when the profile opens, unless the saved model is no longer available. This includes resumed sessions: the profile's pick replaces the one the session last used. On Pi's command line, `--model` (or `--provider`) keeps that model, `--thinking` that level, and `--models` keeps a saved model only if it is in that list. Subagents and the compactor follow the main model until you pick one for them with `/optchat agents model` or `/optchat model`; picking one pins it to that profile, and the first row of the picker (Pi's model) lets them follow again. If you use other providers, change them before chatting. Authentication uses Pi's existing provider login.
+ 
+ Compression and subagents make extra model requests with your provider credentials.
+ 
+@@ -89,8 +89,8 @@ Compression and subagents make extra model requests with your provider credentia
+ 
+ | Setting | Default | What it does |
+ | --- | --- | --- |
+-| Compactor model | Sonnet 5.5, medium | Same as `/optchat model`. Applies to the next summary. |
+-| Subagent model | Opus 5.5, high | Same as `/optchat agents model`. Applies to new subagents. |
++| Compactor model | Pi's model | Same as `/optchat model`. Follows `/model` until you pick one here. Applies to the next summary. |
++| Subagent model | Pi's model | Same as `/optchat agents model`. Follows `/model` until you pick one here. Applies to new subagents. |
+ | Subagent levels | 1 | 1: only the main agent starts subagents. 2 or more: subagents may start their own, that many levels deep. Applies to subagents started or resumed after the change. |
+ | Max active agents | 8 | Subagents running at once in the profile, all levels together, so it also caps how deep a chain can go. |
+ | Group subagent reports | off | Off: each subagent reports as soon as it finishes (the recipe). On: the subagents started by one spawn report together, in one message once the last of them finishes. Applies to the next spawn. |
+@@ -232,7 +232,7 @@ Pipe names and permissions: [docs/storage.md](docs/storage.md#windows-difference
+ - **Instructions**: the main agent and subagents get Pi's usual global and repository `AGENTS.md` files and your skills, followed by the profile's `AGENTS.md`, which comes last and wins. OptChat replaces only Pi's opening prompt. Prompt templates work in the main session only.
+ - **Tab title**: `π personal` while waiting for you, `● π personal` while the agent works, plus `· 2 agents` while subagents run. A connected window shows `↳ personal`, `● ↳ personal`, then `↳ personal · done` or `↳ personal · disconnected`. OptChat replaces Pi's default title and puts its own back when Pi resets it (new session, reload, rename).
+ - **Images** you paste, or a tool returns, are kept under the profile's `images/` (once each, shrunk to 2,048 px on the long side and about 1.5 MB with Pi's own resizer; smaller ones stay as they are). The log names each as `[image <hash>]`, and `zoom(id, 1)` returns a message's images with its text. Summaries stay text. Imported conversations keep a text placeholder.
+-- **Long turns** (#146): Pi's auto-compaction is off for the main agent, since memory replaces it. Once the current turn's verbatim messages pass the Turn refresh threshold (30% of the model's window by default), they are flushed to memory, the view is rebuilt, and only the task message plus the last tool call and its result stay verbatim; the earlier steps are the view's last lines, a zoom away. In an A/B on a 200K model, turns that otherwise gave up around 100K tokens kept going and covered the whole task. `OPTCHAT_REFRESH_AT` (a fraction, e.g. `0.3`; `0` is off) overrides the setting. Subagents use Pi's own compaction instead, starting at about the same point.
++- **Long turns** (#146): Pi's auto-compaction is off for the main agent, since memory replaces it. Once the current turn's verbatim messages pass the Turn refresh threshold (30% of the model's window by default), they are flushed to memory, the view is rebuilt, and the turn goes on with a fresh window: the task stays verbatim up to half the threshold, and every later message keeps at most an eighth of it, the rest becoming a pointer to its memory line. Those caps depend only on the threshold, so a message already sent reads back byte for byte in the next call and the prefix cache still matches it, which is what keeps a long turn cheap. In an A/B on a 200K model, turns that otherwise gave up around 100K tokens kept going and covered the whole task. `OPTCHAT_REFRESH_AT` (a fraction, e.g. `0.3`; `0` is off) overrides the setting. Subagents use Pi's own compaction instead, starting at about the same point.
+ - **Restarts**: unsent inputs are recovered into memory, and pending subagent reports are delivered.
+ - **Prompt-template inputs** can be saved twice: expanded, and later in their original form as an unanswered input, because Pi expands them after the input journal records them. Skill commands (`/skill:name`) are matched back to their journaled input and don't have this problem. Plain text chat is unaffected.
+ 
+diff --git a/docs/recipe-differences.md b/docs/recipe-differences.md
+index 929c4cd..fb0138e 100644
+--- a/docs/recipe-differences.md
++++ b/docs/recipe-differences.md
+@@ -47,6 +47,6 @@ Each run's context is the memory view, the previous exchange, and your new messa
+ 2. **Subagents** are built in with Pi's SDK rather than a separate package. With Subagent levels above 1 they can delegate further. A spawn can set each task's model and thinking level when you ask for them.
+ 3. **Memory search** (off by default). With the setting on, the agent also gets `search(text, before?)`: plain, case-insensitive text matching over the original messages, never the summaries (a summary can be wrong, and one fact repeats at every level of the tree), skipping logged zoom and search results. It returns 20 hits at a time, newest first, each with its id, the view line that holds it when that is a summary (`1234 (in 1024+256)`), its date and a snippet. `before: id` pages back, and `zoom(id, 1)` reads a hit. One line about it is added to the system prompt, and the rule that zoom is the only way through memory names search too. Turning it on or off changes the cached prompt once.
+ 4. **Large messages.** `zoom(id, 1)` returns a message over 25,000 characters in pages, `[showing characters 0-25000 of 92000; next page: offset 25000]`, and `offset`/`limit` read any part of one (used on a shorter message, the page adds a note that it fits in one zoom). The recipe returns it whole, where the 30,000-character tool output cap cut out its middle.
+-5. **Turn refresh** (#146). Once the current turn's verbatim messages pass the Turn refresh threshold (30% by default), they move into memory and the turn goes on with a fresh window. 0% is off, as in the recipe. See "Long turns" in the README.
++5. **Turn refresh** (#146). Once the current turn's verbatim messages pass the Turn refresh threshold (30% by default), they move into memory and the turn goes on with a fresh window. What stays verbatim is capped so the next call repeats the last one's bytes: the task up to half the threshold, every other message an eighth of it. 0% is off, as in the recipe. See "Long turns" in the README.
+ 6. **Profiles**, the **inspector**, the **usage ledger**, **import**, and **connected windows** are additions. Import adds historical-record guidance to the prompts.
+ 7. **Not done**: computer use and hosting on an always-on machine.
+diff --git a/src/index.ts b/src/index.ts
+index c9caf4e..e118b75 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -9,7 +9,7 @@ import { Type } from 'typebox';
+ import { Memory } from './memory.ts';
+ import { atomicWrite, storeFor } from './store.ts';
+ import { createCompressor, type ModelChoice } from './compactor.ts';
+-import { createProfile, holdProfile, instructions, isWindows, lastProfile, listProfiles, loadConfig, profilePath, rememberProfile, saveConfig, ProfileBusyError, type ProfileConfig } from './profiles.ts';
++import { createProfile, holdProfile, instructions, isWindows, lastProfile, listProfiles, loadConfig, profilePath, rememberProfile, roleChoice, saveConfig, ProfileBusyError, type ProfileConfig, type Role } from './profiles.ts';
+ import { allowSearch, CONTINUITY, IMPORT_GUIDANCE, MASTER, modelsHint, SEARCH_DOC, TURN_REFRESHED, VIEW_DOC } from './prompts.ts';
+ import { cachePayload, record } from './cache.ts';
+ import { saveImages } from './images.ts';
+@@ -230,13 +230,21 @@ export default function optchat(pi: ExtensionAPI) {
+     let openingMemory: Memory | undefined;
+     try {
+       const config = loadConfig(dir);
++      // A role without its own pick follows Pi's model; the profile saves every pick, so this tracks /model and /thinking.
++      const modelFor = (role: Role): ModelChoice | undefined =>
++        roleChoice(config, role) ?? (ctx.model && { provider: ctx.model.provider, model: ctx.model.id, thinking: pi.getThinkingLevel() });
++      const picked = (role: Role): ModelChoice => {
++        const choice = modelFor(role);
++        if (!choice) throw new Error(`No model yet: choose one in Pi (/model), or give ${role === 'compactor' ? 'the compactor' : 'subagents'} their own with /optchat ${role === 'compactor' ? 'model' : 'agents model'}.`);
++        return choice;
++      };
+       const sessionId = ctx.sessionManager.getSessionId();
+       const usage = new UsageLedger(dir);
+       usage.backfill(ctx.sessionManager.getEntries(), sessionId);
+       const pending = join(dir, 'pending-reports.json');
+       const saved: unknown = existsSync(pending) ? JSON.parse(readFileSync(pending, 'utf8')) : [];
+       if (!Array.isArray(saved) || !saved.every(isPendingReport)) throw new Error('Invalid pending report journal.');
+-      const memory = await Memory.open(memoryDirectory(dir), createCompressor(ctx.modelRegistry, () => config.compactor, message => {
++      const memory = await Memory.open(memoryDirectory(dir), createCompressor(ctx.modelRegistry, () => picked('compactor'), message => {
+         usage.compression(message, 'compactor', sessionId);
+         status(ctx);
+       }, () => config.summaryAcceptBytes), warning => ctx.ui.notify(warning, 'error'), undefined, config.jobs);
+@@ -244,9 +252,9 @@ export default function optchat(pi: ExtensionAPI) {
+       const inbox = new Inbox(dir);
+       const recovered = pendingImport(dir) ? 0 : inbox.recover(memory);
+       if (recovered) ctx.ui.notify(`Recovered ${recovered} unanswered inputs into ${name}'s memory. Ask to continue them when ready.`, 'info');
+-      const children = new Children(memory, ctx.modelRegistry, () => config.subagent, () => `${instructions(dir)}\n\n${IMPORT_GUIDANCE}`,
++      const children = new Children(memory, ctx.modelRegistry, () => picked('subagent'), () => `${instructions(dir)}\n\n${IMPORT_GUIDANCE}`,
+         deliverReport, text => ctx.ui.notify(text, 'error'), dir, { parentSession: sessionId, usage, builtins: () => loadedBuiltins(pi), settings: () => config, hold: holdReports,
+-          summarizeHandoff: createHandoffSummarizer(ctx.modelRegistry, () => config.compactor, message => usage.compression(message, 'compactor', sessionId)) });
++          summarizeHandoff: createHandoffSummarizer(ctx.modelRegistry, () => picked('compactor'), message => usage.compression(message, 'compactor', sessionId)) });
+       const loggedReports = new Set(memory.root.map(e => e.receipt));
+       // Reports a crash held back with their unfinished siblings are delivered now, as they are.
+       reports = saved.map(s => typeof s === 'string' ? { text: s } : { text: s.text, count: s.count })
+@@ -260,7 +268,8 @@ export default function optchat(pi: ExtensionAPI) {
+       if (ctx.mode !== 'print' && ctx.mode !== 'json') closeWindows = await serveWindows(dir, children, () => !stopping && !importing && !pendingImport(dir), deliverReport);
+       untitle = children.subscribe(() => showTitle(ctx)); showTitle(ctx);
+       status(ctx);
+-      ctx.ui.notify(`${brand} · ${name} · ${memory.root.length} messages\nCompactor: ${config.compactor.provider}/${config.compactor.model} (${config.compactor.thinking})`, 'info');
++      const compactor = modelFor('compactor');
++      ctx.ui.notify(`${brand} · ${name} · ${memory.root.length} messages\nCompactor: ${compactor ? `${compactor.provider}/${compactor.model} (${compactor.thinking})` : 'Pi\'s model (pick one in Pi)'}`, 'info');
+       const queuedReports = [...reports];
+       if (!pendingImport(dir)) {
+         const recover = (work: Promise<void>, what: string) => work.catch(error => ctx.ui.notify(`${what}: ${errorText(error)}`, 'error'));
+@@ -421,7 +430,7 @@ export default function optchat(pi: ExtensionAPI) {
+     const a = required();
+     // Pi's own prompt sections (AGENTS.md files, skills, cwd) stay; the profile's instructions go last.
+     syncSearch(a.config);
+-    event.systemPromptOptions.customPrompt = allowSearch(`${MASTER}\n\n${modelsHint(a.config.subagent)}\n\n${VIEW_DOC}${a.config.previousExchange ? CONTINUITY : ''}${a.config.memorySearch ? SEARCH_DOC : ''}`, a.config.memorySearch);
++    event.systemPromptOptions.customPrompt = allowSearch(`${MASTER}\n\n${modelsHint(roleChoice(a.config, 'subagent'))}\n\n${VIEW_DOC}${a.config.previousExchange ? CONTINUITY : ''}${a.config.memorySearch ? SEARCH_DOC : ''}`, a.config.memorySearch);
+     event.systemPromptOptions.sections.instructions = `${instructions(a.dir)}\n\n${IMPORT_GUIDANCE}`;
+     refreshContextFiles(event.systemPromptOptions);
+     prompt = event.systemPrompt;
+@@ -489,7 +498,8 @@ export default function optchat(pi: ExtensionAPI) {
+       const current = ctx.getSystemPrompt();
+       if (current.startsWith(MASTER.slice(0, 40))) prompt = current;
+       // A turn past its budget moves its steps into the view, keeping the task and the last tool call whole (#146).
+-      const refresh = refreshPoint(run, keep, refreshBudget(ctx.model?.contextWindow, refreshFraction(a.config.refreshAt)));
++      const budget = refreshBudget(ctx.model?.contextWindow, refreshFraction(a.config.refreshAt));
++      const refresh = refreshPoint(run, keep, budget);
+       if (refresh) {
+         const { cut, size } = refresh, began = Date.now();
+         ctx.ui.setWorkingMessage(`OptChat: moving this turn's ${Math.round(size / 4000)}k tokens into memory…`);
+@@ -498,7 +508,7 @@ export default function optchat(pi: ExtensionAPI) {
+         ctx.ui.notify(`OptChat moved ${Math.round(size / 4000)}k tokens of this turn into memory (${((Date.now() - began) / 1000).toFixed(1)}s).`, 'info');
+       }
+       // Built on every call, unlike the view, so it is never out of date; it goes last, after everything cached.
+-      return { messages: buildContext(event.messages, refreshedRun(run, keep, TURN_REFRESHED), view, promptFor(prompt, a.config), previous, atWork(a.children.working)) };
++      return { messages: buildContext(event.messages, refreshedRun(run, keep, TURN_REFRESHED, budget), view, promptFor(prompt, a.config), previous, atWork(a.children.working)) };
+     } catch (error) {
+       // Pi catches extension errors. Explicitly abort so it cannot fall back to old context.
+       ctx.abort();
+@@ -509,8 +519,12 @@ export default function optchat(pi: ExtensionAPI) {
+   });
+   pi.on('before_provider_request', (event, ctx) => ctx.model?.api === 'anthropic-messages' ? cachePayload(event.payload) : event.payload);
+   pi.on('cache_warming_decision', () => ({ action: 'stop' }));
+-  pi.on('session_before_compact', (_event, ctx) => {
+-    ctx.ui.notify('OptChat manages history between turns. Pi compaction is disabled; an exceptionally long single run may require stopping and continuing in a new turn.', 'info');
++  pi.on('session_before_compact', (event, ctx) => {
++    // Overflow recovery is not compaction: the provider refused the request, and Pi retries the turn once it compacts. Letting it
++    // through keeps the turn alive when the declared window is wrong (a proxy capping lower); the retried request is rebuilt from
++    // the view and its tail is bounded, so it fits.
++    if (event.reason === 'overflow') return;
++    ctx.ui.notify('OptChat manages history between turns. Pi compaction is disabled.', 'info');
+     return { cancel: true };
+   });
+   const collectUsage = (ctx: ExtensionContext) => {
+@@ -593,7 +607,7 @@ export default function optchat(pi: ExtensionAPI) {
+     if (!action) {
+       const a = active;
+       action = await showMenu(ctx, brand, a && { profile: a.name, messages: a.memory.root.length, pending: a.memory.pending,
+-        compactor: a.config.compactor, agents: a.config.subagent, error: a.memory.lastError }) ?? '';
++        compactor: roleChoice(a.config, 'compactor'), agents: roleChoice(a.config, 'subagent'), error: a.memory.lastError }) ?? '';
+     }
+     if (action === 'import') {
+       const a = required();
+@@ -612,7 +626,8 @@ export default function optchat(pi: ExtensionAPI) {
+           }
+           if (selected !== 'Resume import') return;
+         } else {
+-          const plan = await chooseImport(ctx, a.name, a.memory, `${a.config.compactor.provider}/${a.config.compactor.model} (${a.config.compactor.thinking})`, signal);
++          const importModel = roleChoice(a.config, 'compactor');
++          const plan = await chooseImport(ctx, a.name, a.memory, importModel ? `${importModel.provider}/${importModel.model} (${importModel.thinking})` : 'Pi\'s model', signal);
+           if (!plan) return;
+           signal.throwIfAborted();
+           flush(); a.inbox.recover(a.memory); await checkpoints; await a.memory.close(); closed = true;
+@@ -621,7 +636,7 @@ export default function optchat(pi: ExtensionAPI) {
+           if (!job) return;
+         }
+         if (!closed) { await a.memory.close(); closed = true; }
+-        const compress = createCompressor(ctx.modelRegistry, () => a.config.compactor, message => {
++        const compress = createCompressor(ctx.modelRegistry, () => { const choice = roleChoice(a.config, 'compactor'); if (!choice) throw new Error('No model yet: choose one in Pi (/model) or with /optchat model.'); return choice; }, message => {
+           a.usage.compression(message, 'import', ctx.sessionManager.getSessionId());
+         }, () => a.config.summaryAcceptBytes);
+         const completed = await showProgress(ctx, job, (signal, progress) => runImport(a.dir, compress, signal, a.config.jobs, progress), signal);
+diff --git a/src/menu.ts b/src/menu.ts
+index b48539b..79ae127 100644
+--- a/src/menu.ts
++++ b/src/menu.ts
+@@ -19,7 +19,7 @@ const DESCRIPTIONS: Record<MenuAction, string> = {
+   import: 'Import history, or resume a paused import',
+ };
+ 
+-export interface MenuStatus { profile: string; messages: number; pending: number; compactor: ModelChoice; agents: ModelChoice; error?: string }
++export interface MenuStatus { profile: string; messages: number; pending: number; compactor?: ModelChoice; agents?: ModelChoice; error?: string }
+ /** The status block as label and value; the plain menu outside the TUI shows the same rows. */
+ export const statusRows = (s: MenuStatus) => [
+   ['Memory', `${count(s.messages)} messages · ${count(s.pending)} pending`],
+diff --git a/src/profiles.ts b/src/profiles.ts
+index 7ea6c43..d93d50e 100644
+--- a/src/profiles.ts
++++ b/src/profiles.ts
+@@ -12,13 +12,15 @@ export const isWindows = process.platform === 'win32';
+ const PIPE_PREFIX = '\\\\.\\pipe\\';
+ 
+ export const dataHome = () => resolve(process.env.OPTCHAT_HOME ?? join(homedir(), '.optchat'));
+-/** `main` is the last model and thinking level picked in Pi while this profile was open; absent until one is picked. */
+-export interface ProfileConfig extends Settings { compactor: ModelChoice; subagent: ModelChoice; main?: ModelChoice }
+-export const defaults: ProfileConfig = {
+-  compactor: { provider: 'anthropic', model: 'claude-sonnet-5-5', thinking: 'medium' },
+-  subagent: { provider: 'anthropic', model: 'claude-opus-5-5', thinking: 'high' },
+-  ...DEFAULT_SETTINGS,
+-};
++/** `main` is the last model and thinking level picked in Pi while this profile was open; absent until one is picked.
++ * A role without its own pick follows `main`, so OptChat runs on the model the user is already using. */
++export interface ProfileConfig extends Settings { compactor?: ModelChoice; subagent?: ModelChoice; main?: ModelChoice }
++/** Roles whose own pick overrides following Pi's model. */
++export type Role = 'compactor' | 'subagent';
++/** What a role runs on: its own pick, else the model Pi is on (as last saved while this profile was open). */
++export const roleChoice = (config: ProfileConfig, role: Role) => config[role] ?? config.main;
++/** Victor's models, sent only when the user pins them; the defaults follow Pi instead. */
++export const defaults: ProfileConfig = { ...DEFAULT_SETTINGS };
+ export const THINKING = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+ export function profilePath(name: string) {
+   if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(name)) throw new Error('Profile names: 1–64 lowercase letters, digits, hyphens, or underscores.');
+@@ -49,11 +51,13 @@ function modelChoice(value: unknown): value is ModelChoice {
+   return record(value) && typeof value.provider === 'string' && typeof value.model === 'string'
+     && THINKING.some(level => level === value.thinking);
+ }
++/** An absent choice is valid: that role follows the main model. */
++const optionalChoice = (value: unknown) => value === undefined || modelChoice(value);
+ export function loadConfig(dir: string): ProfileConfig {
+   const value: unknown = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8'));
+-  if (!record(value) || !modelChoice(value.compactor) || !modelChoice(value.subagent) || value.main !== undefined && !modelChoice(value.main)) throw new Error(`Invalid profile config: ${dir}/config.json`);
++  if (!record(value) || !optionalChoice(value.compactor) || !optionalChoice(value.subagent) || !optionalChoice(value.main)) throw new Error(`Invalid profile config: ${dir}/config.json`);
+   const { compactor, subagent, main } = value;
+-  try { return { compactor, subagent, ...main && { main }, ...readSettings(value) }; }
++  try { return { ...compactor && { compactor }, ...subagent && { subagent }, ...main && { main }, ...readSettings(value) }; }
+   catch (error) { throw new Error(`Invalid profile config: ${dir}/config.json: ${error instanceof Error ? error.message : String(error)}`); }
+ }
+ export function instructions(dir: string) { return readFileSync(join(dir, 'AGENTS.md'), 'utf8'); }
+diff --git a/src/prompts.ts b/src/prompts.ts
+index 6167c23..ab4ba5f 100644
+--- a/src/prompts.ts
++++ b/src/prompts.ts
+@@ -73,8 +73,8 @@ a fact OptChat must know. If told the line is too long, shorten it. Non-ASCII
+ characters cost 2-4 bytes.`;
+ /** Names the profile's subagent choice, so the agent has no gap to fill from memory when it spawns: unset means this
+  * model, and the ids it knows from training drift, so the models tool is the only source for a named one. */
+-export const modelsHint = ({ provider, model, thinking }: ModelChoice) =>
+-  `Subagents run ${provider}/${model} at thinking ${thinking}: leave a task's model and thinking unset for that. Set either one only when the user asks for it. A named model takes its id from models(), never from memory: your training may not know the newest ones, and a family without a version ("Opus", "GPT") means the newest one.`;
++export const modelsHint = (choice: ModelChoice | undefined) =>
++  `Subagents run ${choice ? `${choice.provider}/${choice.model} at thinking ${choice.thinking}` : "the model Pi is on, at its thinking level"}: leave a task's model and thinking unset for that. Set either one only when the user asks for it. A named model takes its id from models(), never from memory: your training may not know the newest ones, and a family without a version ("Opus", "GPT") means the newest one.`;
+ /** Labels the line naming running agents, last in every main-agent request while any run (src/transcript.ts); never stored. */
+ export const AT_WORK = '[OptChat status] Agents at work now: ';
+ export const MASTER = `You are OptChat, an AI agent that works for one user in a single chat that
+diff --git a/src/settings-page.ts b/src/settings-page.ts
+index cf7843e..7d7fb4e 100644
+--- a/src/settings-page.ts
++++ b/src/settings-page.ts
+@@ -11,10 +11,14 @@ const ROLES: Record<Role, { label: string; description: string; applies: string
+   subagent: { label: 'Subagent model', description: 'Runs every subagent. Shortcut: /optchat agents model.', applies: 'Applies to subagents started after this.' },
+ };
+ const modelName = (choice: ModelChoice) => `${choice.provider}/${choice.model}`;
+-export const showModel = (choice: ModelChoice) => `${modelName(choice)} · ${choice.thinking}`;
+-/** The value column: the model, then whether it is the default (shown short, without its provider). */
+-const modelValue = (theme: Theme, role: Role, choice: ModelChoice) => `${showModel(choice)}${theme.fg('dim', showModel(choice) === showModel(defaults[role])
+-  ? '  default' : `  default ${defaults[role].model} · ${defaults[role].thinking}`)}`;
++/** A role's model as shown to the user; without its own pick it follows the model Pi is on. */
++export const showModel = (choice: ModelChoice | undefined) => choice ? `${modelName(choice)} · ${choice.thinking}` : 'Pi\'s model (follow)';
++/** The pick that clears a role's own choice, so it follows Pi again. */
++const FOLLOW = 'pi-model';
++/** The value column: the model, then whether it is pinned rather than following Pi. */
++const modelValue = (theme: Theme, choice: ModelChoice | undefined) => choice
++  ? `${showModel(choice)}${theme.fg('dim', '  pinned')}`
++  : theme.fg('accent', showModel(undefined));
+ const show = (key: SettingKey, value: number | boolean) => {
+   const spec = SETTINGS[key];
+   return typeof value === 'boolean' ? value ? 'on' : 'off' : spec.kind === 'percent' ? percent(value) : spec.kind === 'number' && spec.unit ? `${value} ${spec.unit}` : String(value);
+@@ -71,21 +75,24 @@ class NumberStep extends Container {
+ /** Model first (type to filter), then thinking level; Esc goes back a step. */
+ class ModelStep extends Container {
+   private active: { handleInput(data: string): void } = { handleInput: () => {} };
+-  constructor(private readonly theme: Theme, private readonly role: Role, private readonly models: Options['models'], private readonly current: ModelChoice,
+-    private readonly submit: (choice: ModelChoice) => string | undefined, private readonly cancel: () => void) {
++  constructor(private readonly theme: Theme, private readonly role: Role, private readonly models: Options['models'], private readonly current: ModelChoice | undefined,
++    private readonly submit: (choice: ModelChoice | undefined) => string | undefined, private readonly cancel: () => void) {
+     super();
+     this.pickModel();
+   }
+   private pickModel() {
+     const { theme, current } = this, filter = new Input();
+-    const items: SelectItem[] = this.models.map(({ name }) => ({ value: name, label: name, description: name === modelName(current) ? 'current' : undefined }));
++    const items: SelectItem[] = [
++      { value: FOLLOW, label: 'Pi\'s model', description: current ? 'follow the model Pi is on' : 'current: follows the model Pi is on' },
++      ...this.models.map(({ name }) => ({ value: name, label: name, description: name === (current && modelName(current)) ? 'current' : undefined })),
++    ];
+     let list = new SelectList(items, 10, listTheme(theme));
+     const build = () => {
+       list = new SelectList(filter.getValue() ? fuzzyFilter(items, filter.getValue(), i => i.value) : items, 10, listTheme(theme));
+       list.onSelect = item => this.pickThinking(item.value); list.onCancel = this.cancel;
+       return list;
+     };
+-    build(); list.setSelectedIndex(Math.max(0, this.models.findIndex(m => m.name === modelName(current))));
++    build(); list.setSelectedIndex(current ? Math.max(1, 1 + this.models.findIndex(m => m.name === modelName(current))) : 0);
+     filter.focused = true;
+     const box = step(theme, ROLES[this.role].label, `${ROLES[this.role].description} Now ${showModel(current)}.`, filter, 'Type to filter · Enter to choose · Esc to go back', [new Spacer(1), list]);
+     this.show(box, data => {
+@@ -97,9 +104,14 @@ class ModelStep extends Container {
+   }
+   private pickThinking(model: string) {
+     const { theme, current } = this, error = new Text('', 0, 0);
++    if (model === FOLLOW) {
++      const problem = this.submit(undefined);
++      if (problem) error.setText(theme.fg('error', problem));
++      return;
++    }
+     const levels = this.models.find(m => m.name === model)?.thinking ?? THINKING;
+     const list = new SelectList(levels.map(value => ({ value, label: value })), levels.length, listTheme(theme));
+-    list.setSelectedIndex(Math.max(0, levels.indexOf(current.thinking)));
++    list.setSelectedIndex(Math.max(0, levels.indexOf(current?.thinking ?? 'off')));
+     list.onCancel = () => this.pickModel();
+     list.onSelect = item => {
+       const thinking = levels.find(level => level === item.value);
+@@ -141,11 +153,11 @@ export function settingsPage(theme: Theme, o: Options, close: () => void, redraw
+   };
+   const models = (['compactor', 'subagent'] as const).map((role): SettingItem => {
+     const { label, description, applies } = ROLES[role];
+-    return { id: role, label, description: `${description} Default ${showModel(defaults[role])}. ${applies}`,
+-      currentValue: modelValue(theme, role, config[role]),
++    return { id: role, label, description: `${description} Follows Pi\'s model until you pick one here. ${applies}`,
++      currentValue: modelValue(theme, config[role]),
+       submenu: (_value, done) => new ModelStep(theme, role, o.models, config[role], choice => {
+         const problem = apply({ [role]: choice }, `${label.toLowerCase()} ${showModel(choice)}`, applies);
+-        if (!problem) done(modelValue(theme, role, choice));
++        if (!problem) done(modelValue(theme, choice));
+         return problem;
+       }, () => done()),
+     };
+@@ -194,3 +206,4 @@ export function showSettings(ctx: ExtensionContext, o: Options) {
+ export function showModelPicker(ctx: ExtensionContext, role: Role, o: Options) {
+   return ctx.ui.custom<ModelChoice | undefined>((tui, theme, _keys, done) => modelPicker(theme, role, o, done, () => tui.requestRender()));
+ }
++export type { Role };
+diff --git a/src/transcript.ts b/src/transcript.ts
+index eac10ad..e3d9790 100644
+--- a/src/transcript.ts
++++ b/src/transcript.ts
+@@ -205,19 +205,68 @@ export function lastStep(run: readonly AgentMessage[]) {
+   return step > task && task >= 0 ? step : 0;
+ }
+ /** The run's new `keep` and the size it moves into the view, when what is sent since the last refresh passes the budget.
+- * What stays verbatim (the task and the last step) must fit in half the budget: a bigger last step, such as many parallel
+- * reads, would otherwise pass the budget again on the next call and refresh every call. It waits for a smaller step instead. */
++ * The tail itself is always cut to the budget by `refreshedRun`, so no step is too big to refresh at. */
+ export function refreshPoint(run: readonly AgentMessage[], keep: number, budget: number | undefined) {
+-  const cut = lastStep(run), task = run.find(m => m.role === 'user');
++  const cut = lastStep(run);
+   if (!budget || cut <= keep) return undefined;
+   const size = chars(run.slice(keep));
+-  if (size <= budget || (task ? messageChars(task) : 0) + chars(run.slice(cut)) > budget / 2) return undefined;
++  if (size <= budget) return undefined;
+   return { cut, size };
+ }
+-/** The run as sent after a mid-turn refresh at `keep`: the task verbatim, then the run from `keep` on. Everything between is in the view. */
+-export function refreshedRun(run: readonly AgentMessage[], keep: number, note: string): AgentMessage[] {
++/** The task keeps up to half a refresh budget, since the recipe keeps your own words, and every other message keeps at
++ * most an eighth of it. */
++const TASK_SHARE = 2, MESSAGE_SHARE = 8;
++const leftNote = (left: number) => `\n[… ${left.toLocaleString('en-US')} more characters; the view keeps this message as one memory line]`;
++/** `text` cut to its head, or undefined when it is short enough to send whole. */
++function cutText(text: string, keep: number): string | undefined {
++  if (text.length <= keep + 64) return undefined;
++  const cut = text.slice(0, Math.max(0, keep));
++  return cut + leftNote(text.length - cut.length);
++}
++/**
++ * What each message may send: the task holds up to half the budget, every other message a fixed eighth of it. Both caps
++ * come from the budget alone, never from how many messages the step has added, so a message already sent stays byte
++ * identical in the next call and the prefix cache still matches it: the requests of one turn read one another's cache
++ * instead of paying for the whole tail each time. The tail is therefore bounded per message rather than in aggregate, a
++ * step of parallel results bounded result by result, and `keep` moving steps into the view is what holds a turn to its
++ * budget (#146). Tool calls and images stay whole: the first must match its result, and the recipe keeps the second.
++ */
++function bounded(messages: readonly AgentMessage[], budget: number | undefined): AgentMessage[] {
++  if (!budget) return [...messages];
++  // The task is the first user message, as in `lastStep`: a run can start with Pi's system message.
++  const taskAt = messages.findIndex(message => message.role === 'user');
++  const task = taskAt >= 0 ? messages[taskAt] : undefined;
++  const taskKeep = task ? Math.min(messageChars(task), Math.floor(budget / TASK_SHARE)) : 0;
++  const share = Math.max(1, Math.floor(budget / MESSAGE_SHARE));
++  return messages.map((message, at) => {
++    const keep = at === taskAt ? taskKeep : share;
++    if (!('content' in message)) return message;
++    if (typeof message.content === 'string') {
++      // Only the user's own words can be a plain string here; other roles carry blocks or are never in a tail.
++      const text = cutText(message.content, keep);
++      return message.role === 'user' && text !== undefined ? { ...message, content: text } : message;
++    }
++    return cutBlocks(message, keep);
++  });
++}
++/** `message` with every text it carries cut to `keep`; tool calls and images stay whole, and the message itself when nothing was cut. */
++function cutBlocks<M extends AgentMessage>(message: M, keep: number): M {
++  if (!('content' in message) || typeof message.content === 'string') return message;
++  let cut = false;
++  const content = message.content.map(block => {
++    const text = block.type === 'text' ? block.text : block.type === 'thinking' ? block.thinking : undefined;
++    const shortened = text === undefined ? undefined : cutText(text, keep);
++    if (shortened === undefined) return block;
++    cut = true;
++    return block.type === 'thinking' ? { ...block, thinking: shortened } : { ...block, text: shortened };
++  });
++  return cut ? { ...message, content } : message;
++}
++/** The run as sent after a mid-turn refresh at `keep`: the task verbatim, then the run from `keep` on, both held to `budget`
++ * characters so a single step, such as many parallel tool results, cannot outgrow the window. Everything between is in the view. */
++export function refreshedRun(run: readonly AgentMessage[], keep: number, note: string, budget?: number): AgentMessage[] {
+   const task = run.find(m => m.role === 'user');
+-  if (!keep || !task) return [...run];
++  if (!keep || !task) return bounded(run, budget);
+   const content = typeof task.content === 'string' ? [{ type: 'text' as const, text: task.content }] : task.content;
+-  return [{ ...task, content: [...content, { type: 'text' as const, text: `\n\n${note}` }] }, ...run.slice(keep)];
++  return bounded([{ ...task, content: [...content, { type: 'text' as const, text: `\n\n${note}` }] }, ...run.slice(keep)], budget);
+ }
+diff --git a/test/compaction-overflow.test.ts b/test/compaction-overflow.test.ts
+new file mode 100644
+index 0000000..8681e71
+--- /dev/null
++++ b/test/compaction-overflow.test.ts
+@@ -0,0 +1,39 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
++import optchat from '../src/index.ts';
++
++type Handler = (event: unknown, ctx: unknown) => unknown;
++const noop = () => {};
++
++/** The extension's handlers, without a session: only the ones this file exercises are called. */
++function loaded() {
++  const handlers = new Map<string, Handler>();
++  const notices: string[] = [];
++  const pi = new Proxy({} as Record<string, unknown>, {
++    get(_target, key) {
++      if (key === 'on') return (name: string, handler: Handler) => { handlers.set(name, handler); return noop; };
++      if (key === 'getFlag') return () => undefined;
++      if (key === 'getActiveTools' || key === 'getAllTools' || key === 'getCommands') return () => [];
++      return noop;
++    },
++  });
++  optchat(pi as unknown as ExtensionAPI);
++  const ctx = { ui: { notify: (text: string) => { notices.push(text); } } };
++  return { handlers, notices, ctx };
++}
++
++test('compaction stays off for manual and threshold compactions', () => {
++  for (const reason of ['manual', 'threshold'] as const) {
++    const { handlers, notices, ctx } = loaded();
++    const result = handlers.get('session_before_compact')!({ reason }, ctx);
++    assert.deepEqual(result, { cancel: true }, `${reason} compaction is cancelled`);
++    assert.match(notices[0] ?? '', /OptChat manages history between turns/);
++  }
++});
++
++test('overflow recovery is left to Pi, so a refused request is retried instead of ending the turn', () => {
++  const { handlers, notices, ctx } = loaded();
++  assert.equal(handlers.get('session_before_compact')!({ reason: 'overflow' }, ctx), undefined);
++  assert.deepEqual(notices, [], 'no notice: the turn continues');
++});
+diff --git a/test/main-model.test.ts b/test/main-model.test.ts
+index 15abf0f..260987d 100644
+--- a/test/main-model.test.ts
++++ b/test/main-model.test.ts
+@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
+ import { mkdtempSync, statSync } from 'node:fs';
+ import { join } from 'node:path';
+ import { tmpdir } from 'node:os';
+-import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
++import { createAssistantMessageEventStream, type AssistantMessage, type Context } from '@earendil-works/pi-ai';
++import { createAgentSession, DefaultResourceLoader, ModelRegistry, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
+ import optchat from '../src/index.ts';
+-import { createProfile, loadConfig, profilePath, saveConfig } from '../src/profiles.ts';
+-import type { ModelChoice } from '../src/compactor.ts';
++import { createProfile, loadConfig, profilePath, roleChoice, saveConfig } from '../src/profiles.ts';
++import { createCompressor, type ModelChoice } from '../src/compactor.ts';
++import { COMPACT } from '../src/prompts.ts';
++import { emptyUsage } from '../src/usage.ts';
+ import { removeDir } from './support.ts';
+ 
+ const model = (id: string, reasoning: boolean) =>
+@@ -77,3 +80,66 @@ test('the main model and thinking level follow the profile', async () => {
+     removeDir(dir);
+   }
+ });
++
++test('the compactor defaults to the model Pi is on and follows a switch', async () => {
++  const dir = mkdtempSync(join(process.platform === 'darwin' ? '/tmp' : tmpdir(), 'oc-follow-'));
++  const oldHome = process.env.OPTCHAT_HOME;
++  process.env.OPTCHAT_HOME = dir;
++  const sessions: { close: () => Promise<void> }[] = [];
++  const summarized: string[] = [];
++  try {
++    createProfile('fixture');
++    const profile = profilePath('fixture');
++    // No compactor and no subagent in config.json: both follow the model Pi is on.
++    assert.equal(loadConfig(profile).compactor, undefined);
++    assert.equal(loadConfig(profile).subagent, undefined);
++    const runtime = await ModelRuntime.create({ authPath: join(dir, 'auth.json'), modelsPath: null, modelsStorePath: join(dir, 'models-cache.json'), refreshOnCreate: false });
++    runtime.registerProvider('fixture', { baseUrl: 'https://invalid.local', apiKey: 'synthetic', api: 'openai-completions', models: [model('plain', false), model('deep', true)],
++      streamSimple(selected) {
++        summarized.push(selected.id);
++        const reply: AssistantMessage = { role: 'assistant', content: [{ type: 'text', text: 'Summary.' }], timestamp: Date.now(),
++          stopReason: 'stop', api: selected.api, provider: selected.provider, model: selected.id, usage: emptyUsage() };
++        const stream = createAssistantMessageEventStream();
++        queueMicrotask(() => { stream.push({ type: 'done', reason: 'stop', message: reply }); stream.end(); });
++        return stream;
++      } });
++    const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false }, cacheWarming: 'off', retry: { enabled: false } });
++    const loader = new DefaultResourceLoader({ cwd: dir, agentDir: join(dir, 'agent'), settingsManager,
++      noExtensions: true, noContextFiles: true, noSkills: true, noPromptTemplates: true, extensionFactories: [optchat] });
++    await loader.reload();
++    const open = async () => {
++      await loader.reload();
++      const manager = SessionManager.create(dir, join(dir, 'sessions'));
++      manager.appendCustomEntry('optchat.profile', { name: 'fixture' });
++      const { session } = await createAgentSession({ modelRuntime: runtime, model: runtime.getModel('fixture', 'plain'), resourceLoader: loader, settingsManager, sessionManager: manager });
++      const notes: string[] = [], errors: string[] = [];
++      await session.bindExtensions({ uiContext: { ...session.extensionRunner.getUIContext(), notify: text => { notes.push(text); } }, mode: 'print', onError: error => { errors.push(error.error); } });
++      const opened = { session, notes, errors, close: async () => { await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' }); session.dispose(); } };
++      sessions.push(opened);
++      return opened;
++    };
++
++    const first = await open();
++    assert.ok(first.notes.some(n => n.includes('Compactor: fixture/plain')), `the compactor follows Pi's model: ${first.notes.join(' / ')}`);
++    await first.session.setModel(runtime.getModel('fixture', 'deep')!);
++    for (let i = 0; i < 100 && loadConfig(profile).main?.model !== 'deep'; i++) await new Promise(r => setTimeout(r, 10));
++    assert.deepEqual(loadConfig(profile).main, { provider: 'fixture', model: 'deep', thinking: 'off' });
++    await first.close();
++    await new Promise(r => setTimeout(r, 300));
++
++    const second = await open();
++    assert.ok(second.notes.some(n => n.includes('Compactor: fixture/deep')), `the saved pick is the model it follows: ${second.notes.join(' / ')} errors: ${second.errors.join(' / ')}`);
++    await second.close();
++
++    // The summary request itself: the same getter the extension passes to the compactor.
++    const config = loadConfig(profile);
++    const summary = await createCompressor(new ModelRegistry(runtime), () => roleChoice(config, 'compactor')!, () => {})(
++      { context: '0+1|user: hello\n', source: '0+1|user: hello', part: { l: 0, i: 0 } }, new AbortController().signal);
++    assert.equal(summary, 'Summary.');
++    assert.deepEqual(summarized, ['deep'], 'the summary request goes to the model Pi is on');
++  } finally {
++    for (const session of [...sessions]) await session.close();
++    if (oldHome === undefined) delete process.env.OPTCHAT_HOME; else process.env.OPTCHAT_HOME = oldHome;
++    removeDir(dir);
++  }
++});
+diff --git a/test/menu.test.ts b/test/menu.test.ts
+index 0de7a2a..e562604 100644
+--- a/test/menu.test.ts
++++ b/test/menu.test.ts
+@@ -5,7 +5,7 @@ import { optchatMenu, type MenuAction } from '../src/menu.ts';
+ import { defaults } from '../src/profiles.ts';
+ 
+ const plain = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as unknown as Theme;
+-const status = { profile: 'personal', messages: 5251, pending: 1, compactor: defaults.compactor, agents: defaults.subagent, error: 'Rate limited' };
++const status = { profile: 'personal', messages: 5251, pending: 1, error: 'Rate limited' };
+ 
+ test('/optchat shows the profile status as aligned rows and returns the chosen action', () => {
+   const chosen: (MenuAction | undefined)[] = [];
+@@ -13,8 +13,11 @@ test('/optchat shows the profile status as aligned rows and returns the chosen a
+   const lines = menu.render(80).map(line => line.trimEnd());
+   assert.ok(lines.includes(' OptChat v1.2.3 · personal'));
+   assert.ok(lines.includes(' Memory     5,251 messages · 1 pending'));
+-  assert.ok(lines.includes(' Compactor  anthropic/claude-sonnet-5-5 · medium'));
++  assert.ok(lines.includes(` Compactor  Pi's model (follow)`), 'the compactor follows Pi until pinned');
+   assert.ok(lines.includes(' Summaries failing: Rate limited'));
++  const pinned = optchatMenu(plain, 'OptChat', { ...status, compactor: defaults.compactor ?? { provider: 'anthropic', model: 'claude-sonnet-5-5', thinking: 'medium' } },
++    () => {}).render(80).map(line => line.trimEnd());
++  assert.ok(pinned.includes(' Compactor  anthropic/claude-sonnet-5-5 · medium'), 'a pinned model is shown as it is');
+   menu.handleInput('j'); menu.handleInput('\r');
+   menu.handleInput('\x1b');
+   assert.deepEqual(chosen, ['settings', undefined]);
+diff --git a/test/mid-turn-refresh.test.ts b/test/mid-turn-refresh.test.ts
+index e9e8f95..4a62c0f 100644
+--- a/test/mid-turn-refresh.test.ts
++++ b/test/mid-turn-refresh.test.ts
+@@ -9,6 +9,7 @@ import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager
+ import optchat from '../src/index.ts';
+ import { createProfile, loadConfig, profilePath, saveConfig } from '../src/profiles.ts';
+ import { buildContext, messageChars, refreshBudget, refreshedRun, refreshFraction, refreshPoint, textContent } from '../src/transcript.ts';
++const chars = (messages: readonly AgentMessage[]) => messages.reduce((sum, m) => sum + messageChars(m), 0);
+ import { parsePercent } from '../src/settings-page.ts';
+ import { invalid } from '../src/settings.ts';
+ import { subagentCompaction } from '../src/agents.ts';
+@@ -37,15 +38,44 @@ test('the threshold is typed as 30, 30% or 0.3, OPTCHAT_REFRESH_AT overrides it,
+   assert.equal(refreshBudget(200_000, refreshFraction(0.3, '0')), undefined);
+ });
+ 
+-test('a last step too big to keep under half the budget waits for a smaller one instead of refreshing every call', () => {
++test('a step too big to keep whole is refreshed anyway, its tail cut to the budget', () => {
+   const step = (id: string, text: string): AgentMessage[] => [reply([{ type: 'toolCall', id, name: 'read', arguments: {} }], 'toolUse'),
+     { role: 'toolResult', toolCallId: id, toolName: 'read', content: [{ type: 'text', text }], isError: false, timestamp: 3 }];
+   const run: AgentMessage[] = [{ role: 'user', content: 'task', timestamp: 1 }, ...step('a', 'x'.repeat(600)), ...step('b', 'x'.repeat(600))];
+-  assert.equal(refreshPoint(run, 0, 1000), undefined);
+-  assert.equal(refreshPoint([...run, ...step('c', 'small')], 0, 1000)?.cut, 5);
++  assert.equal(refreshPoint(run, 0, 1000)?.cut, 3, 'the step is no longer a reason to wait');
++  const sent = chars(refreshedRun(run, 3, TURN_REFRESHED, 1000));
++  assert.ok(sent <= 1000, `the tail is held to the budget (${sent} characters)`);
+   assert.equal(messageChars({ role: 'user', content: [{ type: 'text', text: 'hi' }, { type: 'image', data: '', mimeType: 'image/png' }], timestamp: 1 }), 4_802, 'images count as Pi estimates them');
+ });
+ 
++test('many parallel tool results are cut to the same cap instead of overflowing the window', () => {
++  const results = Array.from({ length: 5 }, (_, i): AgentMessage => ({ role: 'toolResult', toolCallId: `t${i}`, toolName: 'bash',
++    content: [{ type: 'text', text: `${i}`.repeat(20_000) }], isError: false, timestamp: 3 }));
++  const run: AgentMessage[] = [{ role: 'user', content: 'task', timestamp: 1 },
++    reply(Array.from({ length: 5 }, (_, i) => ({ type: 'toolCall' as const, id: `t${i}`, name: 'bash', arguments: {} })), 'toolUse'), ...results];
++  const budget = 60_000;
++  assert.equal(refreshPoint(run, 0, budget)?.cut, 1, 'the oversized step still refreshes');
++  const sent = refreshedRun(run, 1, TURN_REFRESHED, budget);
++  assert.ok(chars(sent) <= budget, `sent ${chars(sent)} of a ${budget}-character budget`);
++  const texts = sent.filter(m => m.role === 'toolResult').map(m => textContent(m.content));
++  assert.equal(new Set(texts.map(text => text.length)).size, 1, 'every result keeps the same share, the budget over eight');
++  assert.ok(texts.every(text => text.includes('the view keeps this message as one memory line')), 'each is a pointer to memory');
++  assert.equal(sent.filter(m => m.role === 'assistant').length, 1, 'the step keeps its tool calls, so results still match them');
++  assert.ok(sent.some(m => m.role === 'assistant' && m.content.filter(b => b.type === 'toolCall').length === 5));
++});
++
++test('a message already sent stays byte-identical as the step grows, so the next call reads its cache', () => {
++  const big = (at: number): AgentMessage[] => [reply([{ type: 'toolCall', id: `t${at}`, name: 'bash', arguments: {} }], 'toolUse'),
++    { role: 'toolResult', toolCallId: `t${at}`, toolName: 'bash', content: [{ type: 'text', text: 'x'.repeat(20_000) }], isError: false, timestamp: 3 }];
++  const task: AgentMessage = { role: 'user', content: 'task', timestamp: 1 };
++  const budget = 40_000;
++  const first = refreshedRun([task, ...big(1), ...big(2)], 1, TURN_REFRESHED, budget);
++  const second = refreshedRun([task, ...big(1), ...big(2), ...big(3)], 1, TURN_REFRESHED, budget);
++  assert.deepEqual(second.slice(0, first.length).map(m => JSON.stringify(m)), first.map(m => JSON.stringify(m)),
++    'what the next call sends starts with exactly the bytes of the last call');
++  assert.equal(refreshPoint([task, ...big(1), ...big(2), ...big(3)], 1, budget)?.cut, 5, 'the refresh still advances as the turn grows');
++});
++
+ test('subagents use Pi compaction at about the refresh threshold on top of the view, or Pi\'s default when it is off', () => {
+   assert.deepEqual(subagentCompaction(200_000, 0.3), { enabled: true, reserveTokens: 108_000 });
+   assert.deepEqual(subagentCompaction(200_000, 0), { enabled: true });
+diff --git a/test/settings.test.ts b/test/settings.test.ts
+index d63767e..7d40f99 100644
+--- a/test/settings.test.ts
++++ b/test/settings.test.ts
+@@ -208,7 +208,7 @@ test('the settings page saves a valid number and explains an invalid one', () =>
+     const page = settingsPage(plain, { profile: 'demo', config, models: [{ name: 'anthropic/claude-sonnet-5-5', thinking: ['low', 'medium'] }], save: next => saveConfig(dir, next) }, () => {});
+     const type = (...keys: string[]) => { for (const key of keys) page.handleInput(key); };
+     assert.match(page.render(100).join('\n'), /Subagent levels\s+1  default\n/);
+-    assert.match(page.render(100).join('\n'), /claude-haiku-4-5 · low  default claude-sonnet-5-5 · medium/, 'a changed model shows its default too');
++    assert.match(page.render(100).join('\n'), /claude-haiku-4-5 · low  pinned/, 'a pinned model says so');
+     type('\x1b[B', '\x1b[B', '\r'); // down to Subagent levels, open it
+     type('0', '\r');
+     assert.match(page.render(100).join('\n'), /must be a whole number of 1 or more/);
+@@ -317,11 +317,11 @@ test('Memory search turned on and off in /optchat settings adds and removes the
+ test('the thinking step offers only levels the model takes, so Sonnet 5.5 has no "off" that would run at high effort', () => {
+   const dir = mkdtempSync(join(tmpdir(), 'optchat-page-'));
+   try {
+-    const config: ProfileConfig = { ...defaults };
++    const config: ProfileConfig = { ...defaults, compactor: { provider: 'anthropic', model: 'claude-sonnet-5-5', thinking: 'medium' } };
+     const page = settingsPage(plain, { profile: 'demo', config, save: next => saveConfig(dir, next),
+       models: [{ name: 'anthropic/claude-sonnet-5-5', thinking: ['low', 'medium', 'high'] }] }, () => {});
+     page.handleInput('\r'); // open Compactor model
+-    page.handleInput('\r'); // pick the only model
++    page.handleInput('\r'); // pick the pinned model, below "Pi's model"
+     const step = page.render(100).join('\n');
+     assert.match(step, /Thinking level[\s\S]*low[\s\S]*high/);
+     assert.doesNotMatch(step, /^\W*(off|minimal)\s*$/m);

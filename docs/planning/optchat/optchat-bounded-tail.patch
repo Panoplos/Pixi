@@ -1,0 +1,141 @@
+diff --git a/src/transcript.ts b/src/transcript.ts
+index eac10ad..e3d9790 100644
+--- a/src/transcript.ts
++++ b/src/transcript.ts
+@@ -205,19 +205,68 @@ export function lastStep(run: readonly AgentMessage[]) {
+   return step > task && task >= 0 ? step : 0;
+ }
+ /** The run's new `keep` and the size it moves into the view, when what is sent since the last refresh passes the budget.
+- * What stays verbatim (the task and the last step) must fit in half the budget: a bigger last step, such as many parallel
+- * reads, would otherwise pass the budget again on the next call and refresh every call. It waits for a smaller step instead. */
++ * The tail itself is always cut to the budget by `refreshedRun`, so no step is too big to refresh at. */
+ export function refreshPoint(run: readonly AgentMessage[], keep: number, budget: number | undefined) {
+-  const cut = lastStep(run), task = run.find(m => m.role === 'user');
++  const cut = lastStep(run);
+   if (!budget || cut <= keep) return undefined;
+   const size = chars(run.slice(keep));
+-  if (size <= budget || (task ? messageChars(task) : 0) + chars(run.slice(cut)) > budget / 2) return undefined;
++  if (size <= budget) return undefined;
+   return { cut, size };
+ }
+-/** The run as sent after a mid-turn refresh at `keep`: the task verbatim, then the run from `keep` on. Everything between is in the view. */
+-export function refreshedRun(run: readonly AgentMessage[], keep: number, note: string): AgentMessage[] {
++/** The task keeps up to half a refresh budget, since the recipe keeps your own words, and every other message keeps at
++ * most an eighth of it. */
++const TASK_SHARE = 2, MESSAGE_SHARE = 8;
++const leftNote = (left: number) => `\n[… ${left.toLocaleString('en-US')} more characters; the view keeps this message as one memory line]`;
++/** `text` cut to its head, or undefined when it is short enough to send whole. */
++function cutText(text: string, keep: number): string | undefined {
++  if (text.length <= keep + 64) return undefined;
++  const cut = text.slice(0, Math.max(0, keep));
++  return cut + leftNote(text.length - cut.length);
++}
++/**
++ * What each message may send: the task holds up to half the budget, every other message a fixed eighth of it. Both caps
++ * come from the budget alone, never from how many messages the step has added, so a message already sent stays byte
++ * identical in the next call and the prefix cache still matches it: the requests of one turn read one another's cache
++ * instead of paying for the whole tail each time. The tail is therefore bounded per message rather than in aggregate, a
++ * step of parallel results bounded result by result, and `keep` moving steps into the view is what holds a turn to its
++ * budget (#146). Tool calls and images stay whole: the first must match its result, and the recipe keeps the second.
++ */
++function bounded(messages: readonly AgentMessage[], budget: number | undefined): AgentMessage[] {
++  if (!budget) return [...messages];
++  // The task is the first user message, as in `lastStep`: a run can start with Pi's system message.
++  const taskAt = messages.findIndex(message => message.role === 'user');
++  const task = taskAt >= 0 ? messages[taskAt] : undefined;
++  const taskKeep = task ? Math.min(messageChars(task), Math.floor(budget / TASK_SHARE)) : 0;
++  const share = Math.max(1, Math.floor(budget / MESSAGE_SHARE));
++  return messages.map((message, at) => {
++    const keep = at === taskAt ? taskKeep : share;
++    if (!('content' in message)) return message;
++    if (typeof message.content === 'string') {
++      // Only the user's own words can be a plain string here; other roles carry blocks or are never in a tail.
++      const text = cutText(message.content, keep);
++      return message.role === 'user' && text !== undefined ? { ...message, content: text } : message;
++    }
++    return cutBlocks(message, keep);
++  });
++}
++/** `message` with every text it carries cut to `keep`; tool calls and images stay whole, and the message itself when nothing was cut. */
++function cutBlocks<M extends AgentMessage>(message: M, keep: number): M {
++  if (!('content' in message) || typeof message.content === 'string') return message;
++  let cut = false;
++  const content = message.content.map(block => {
++    const text = block.type === 'text' ? block.text : block.type === 'thinking' ? block.thinking : undefined;
++    const shortened = text === undefined ? undefined : cutText(text, keep);
++    if (shortened === undefined) return block;
++    cut = true;
++    return block.type === 'thinking' ? { ...block, thinking: shortened } : { ...block, text: shortened };
++  });
++  return cut ? { ...message, content } : message;
++}
++/** The run as sent after a mid-turn refresh at `keep`: the task verbatim, then the run from `keep` on, both held to `budget`
++ * characters so a single step, such as many parallel tool results, cannot outgrow the window. Everything between is in the view. */
++export function refreshedRun(run: readonly AgentMessage[], keep: number, note: string, budget?: number): AgentMessage[] {
+   const task = run.find(m => m.role === 'user');
+-  if (!keep || !task) return [...run];
++  if (!keep || !task) return bounded(run, budget);
+   const content = typeof task.content === 'string' ? [{ type: 'text' as const, text: task.content }] : task.content;
+-  return [{ ...task, content: [...content, { type: 'text' as const, text: `\n\n${note}` }] }, ...run.slice(keep)];
++  return bounded([{ ...task, content: [...content, { type: 'text' as const, text: `\n\n${note}` }] }, ...run.slice(keep)], budget);
+ }
+diff --git a/test/mid-turn-refresh.test.ts b/test/mid-turn-refresh.test.ts
+index e9e8f95..4a62c0f 100644
+--- a/test/mid-turn-refresh.test.ts
++++ b/test/mid-turn-refresh.test.ts
+@@ -9,6 +9,7 @@ import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager
+ import optchat from '../src/index.ts';
+ import { createProfile, loadConfig, profilePath, saveConfig } from '../src/profiles.ts';
+ import { buildContext, messageChars, refreshBudget, refreshedRun, refreshFraction, refreshPoint, textContent } from '../src/transcript.ts';
++const chars = (messages: readonly AgentMessage[]) => messages.reduce((sum, m) => sum + messageChars(m), 0);
+ import { parsePercent } from '../src/settings-page.ts';
+ import { invalid } from '../src/settings.ts';
+ import { subagentCompaction } from '../src/agents.ts';
+@@ -37,15 +38,44 @@ test('the threshold is typed as 30, 30% or 0.3, OPTCHAT_REFRESH_AT overrides it,
+   assert.equal(refreshBudget(200_000, refreshFraction(0.3, '0')), undefined);
+ });
+ 
+-test('a last step too big to keep under half the budget waits for a smaller one instead of refreshing every call', () => {
++test('a step too big to keep whole is refreshed anyway, its tail cut to the budget', () => {
+   const step = (id: string, text: string): AgentMessage[] => [reply([{ type: 'toolCall', id, name: 'read', arguments: {} }], 'toolUse'),
+     { role: 'toolResult', toolCallId: id, toolName: 'read', content: [{ type: 'text', text }], isError: false, timestamp: 3 }];
+   const run: AgentMessage[] = [{ role: 'user', content: 'task', timestamp: 1 }, ...step('a', 'x'.repeat(600)), ...step('b', 'x'.repeat(600))];
+-  assert.equal(refreshPoint(run, 0, 1000), undefined);
+-  assert.equal(refreshPoint([...run, ...step('c', 'small')], 0, 1000)?.cut, 5);
++  assert.equal(refreshPoint(run, 0, 1000)?.cut, 3, 'the step is no longer a reason to wait');
++  const sent = chars(refreshedRun(run, 3, TURN_REFRESHED, 1000));
++  assert.ok(sent <= 1000, `the tail is held to the budget (${sent} characters)`);
+   assert.equal(messageChars({ role: 'user', content: [{ type: 'text', text: 'hi' }, { type: 'image', data: '', mimeType: 'image/png' }], timestamp: 1 }), 4_802, 'images count as Pi estimates them');
+ });
+ 
++test('many parallel tool results are cut to the same cap instead of overflowing the window', () => {
++  const results = Array.from({ length: 5 }, (_, i): AgentMessage => ({ role: 'toolResult', toolCallId: `t${i}`, toolName: 'bash',
++    content: [{ type: 'text', text: `${i}`.repeat(20_000) }], isError: false, timestamp: 3 }));
++  const run: AgentMessage[] = [{ role: 'user', content: 'task', timestamp: 1 },
++    reply(Array.from({ length: 5 }, (_, i) => ({ type: 'toolCall' as const, id: `t${i}`, name: 'bash', arguments: {} })), 'toolUse'), ...results];
++  const budget = 60_000;
++  assert.equal(refreshPoint(run, 0, budget)?.cut, 1, 'the oversized step still refreshes');
++  const sent = refreshedRun(run, 1, TURN_REFRESHED, budget);
++  assert.ok(chars(sent) <= budget, `sent ${chars(sent)} of a ${budget}-character budget`);
++  const texts = sent.filter(m => m.role === 'toolResult').map(m => textContent(m.content));
++  assert.equal(new Set(texts.map(text => text.length)).size, 1, 'every result keeps the same share, the budget over eight');
++  assert.ok(texts.every(text => text.includes('the view keeps this message as one memory line')), 'each is a pointer to memory');
++  assert.equal(sent.filter(m => m.role === 'assistant').length, 1, 'the step keeps its tool calls, so results still match them');
++  assert.ok(sent.some(m => m.role === 'assistant' && m.content.filter(b => b.type === 'toolCall').length === 5));
++});
++
++test('a message already sent stays byte-identical as the step grows, so the next call reads its cache', () => {
++  const big = (at: number): AgentMessage[] => [reply([{ type: 'toolCall', id: `t${at}`, name: 'bash', arguments: {} }], 'toolUse'),
++    { role: 'toolResult', toolCallId: `t${at}`, toolName: 'bash', content: [{ type: 'text', text: 'x'.repeat(20_000) }], isError: false, timestamp: 3 }];
++  const task: AgentMessage = { role: 'user', content: 'task', timestamp: 1 };
++  const budget = 40_000;
++  const first = refreshedRun([task, ...big(1), ...big(2)], 1, TURN_REFRESHED, budget);
++  const second = refreshedRun([task, ...big(1), ...big(2), ...big(3)], 1, TURN_REFRESHED, budget);
++  assert.deepEqual(second.slice(0, first.length).map(m => JSON.stringify(m)), first.map(m => JSON.stringify(m)),
++    'what the next call sends starts with exactly the bytes of the last call');
++  assert.equal(refreshPoint([task, ...big(1), ...big(2), ...big(3)], 1, budget)?.cut, 5, 'the refresh still advances as the turn grows');
++});
++
+ test('subagents use Pi compaction at about the refresh threshold on top of the view, or Pi\'s default when it is off', () => {
+   assert.deepEqual(subagentCompaction(200_000, 0.3), { enabled: true, reserveTokens: 108_000 });
+   assert.deepEqual(subagentCompaction(200_000, 0), { enabled: true });
