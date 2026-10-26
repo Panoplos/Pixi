@@ -687,7 +687,6 @@ export class InteractiveMode {
 			paddingX: editorPaddingX,
 			autocompleteMaxVisible,
 			prefix: this.settingsManager.getPromptPrefix(),
-			embedWorkingStatus: true,
 		});
 		this.editor = this.defaultEditor;
 		this.editorContainer = new Container();
@@ -3002,6 +3001,12 @@ export class InteractiveMode {
 				if (!customEditor.onExtensionShortcut) {
 					customEditor.onExtensionShortcut = (data: string) => this.defaultEditor.onExtensionShortcut?.(data);
 				}
+				// Expand mode's section navigation is bound on the default editor; an extension editor must keep it or
+				// Ctrl+O expands with no way to move between sections.
+				if (!customEditor.onNavigateVertical) {
+					customEditor.onNavigateVertical = (direction: -1 | 1) =>
+						this.defaultEditor.onNavigateVertical?.(direction) ?? false;
+				}
 				// Copy action handlers (clear, suspend, model switching, etc.)
 				for (const [action, handler] of this.defaultEditor.actionHandlers) {
 					(customEditor.actionHandlers as Map<string, () => void>).set(action, handler);
@@ -5081,7 +5086,9 @@ export class InteractiveMode {
 			this.expandModeActive = true;
 			this.expandFocusIndex = blocks.length - 1;
 			this.applyExpandFocus();
-			this.flashToast(`Expand mode: ${this.expandFocusIndex + 1}/${blocks.length} (Up/Down to navigate)`);
+			this.flashToast(
+				`Expand mode: ${this.expandFocusIndex + 1}/${blocks.length} (${keyText("app.tools.expandUp")} to navigate)`,
+			);
 		} else {
 			this.expandModeActive = false;
 			this.expandFocusIndex = -1;
@@ -7501,7 +7508,7 @@ export class InteractiveMode {
 | \`${cycleThinkingLevel}\` | Cycle thinking level |
 | \`${cycleModelForward}\` / \`${cycleModelBackward}\` | Cycle models |
 | \`${selectModel}\` | Open model selector |
-| \`${expandTools}\` | Expand mode: reveal tool activity sections (Up/Down to navigate) |
+| \`${expandTools}\` | Expand mode: reveal tool activity sections (${keyText("app.tools.expandUp")} to navigate) |
 | \`${toggleThinking}\` | Toggle thinking block visibility |
 | \`${externalEditor}\` | Edit message in external editor |
 | \`${copyMessage}\` | Copy selection or last assistant message |

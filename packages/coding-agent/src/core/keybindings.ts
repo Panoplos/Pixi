@@ -48,6 +48,14 @@ const APP_KEYBINDINGS = {
 	},
 	"app.model.select": { defaultKeys: "ctrl+l", description: "Open model selector" },
 	"app.tools.expand": { defaultKeys: "ctrl+o", description: "Expand mode: reveal tool activity sections" },
+	"app.tools.expandUp": {
+		defaultKeys: ["super+up", "shift+up"],
+		description: "Expand mode: focus the previous section (plain up when the editor takes no arrows)",
+	},
+	"app.tools.expandDown": {
+		defaultKeys: ["super+down", "shift+down"],
+		description: "Expand mode: focus the next section (plain down when the editor takes no arrows)",
+	},
 	"app.thinking.toggle": {
 		defaultKeys: "ctrl+t",
 		description: "Toggle thinking blocks",

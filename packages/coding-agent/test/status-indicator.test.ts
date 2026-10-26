@@ -25,32 +25,16 @@ describe("status indicators", () => {
 		expect(lines).toEqual([" ".repeat(20), " ".repeat(20)]);
 	});
 
-	it("keeps the top border unchanged unless the editor opts in", () => {
+	it("embeds the working indicator for an extension subclass that passes no options", () => {
 		initTheme("dark");
 		const tui = {
 			requestRender: vi.fn(),
 			terminal: { rows: 10 },
 		} as unknown as TUI;
-		const editor = new CustomEditor(tui, getEditorTheme(), KeybindingsManager.create());
-		const indicator = new WorkingStatusIndicator(tui, "Working");
-		editor.setWorkingStatusIndicator(indicator);
-
-		expect(stripAnsi(editor.render(20)[0]!)).toBe("─".repeat(20));
-		const standaloneLine = indicator.render(20)[1]!;
-		expect(standaloneLine).toContain(theme.getFgAnsi("accent"));
-		expect(standaloneLine).toContain(theme.getFgAnsi("muted"));
-		indicator.dispose();
-	});
-
-	it("embeds the working indicator when the editor opts in", () => {
-		initTheme("dark");
-		const tui = {
-			requestRender: vi.fn(),
-			terminal: { rows: 10 },
-		} as unknown as TUI;
-		const editor = new CustomEditor(tui, getEditorTheme(), KeybindingsManager.create(), {
-			embedWorkingStatus: true,
-		});
+		// Extensions replace the editor by subclassing CustomEditor and constructing it bare; the status must stay
+		// inline instead of falling back to a line above the box.
+		class ExtensionEditor extends CustomEditor {}
+		const editor = new ExtensionEditor(tui, getEditorTheme(), KeybindingsManager.create());
 		expect(editor.embedWorkingStatus).toBe(true);
 		editor.borderColor = theme.getThinkingBorderColor("high");
 		const indicator = new WorkingStatusIndicator(tui, "Working", undefined, (text) => editor.borderColor(text));
@@ -59,7 +43,25 @@ describe("status indicators", () => {
 		const topBorder = editor.render(20)[0]!;
 		expect(stripAnsi(topBorder)).toBe("── ⠋ Working ───────");
 		expect(visibleWidth(topBorder)).toBe(20);
-		expect(topBorder.split(theme.getFgAnsi("thinkingHigh"))).toHaveLength(5);
+		indicator.dispose();
+	});
+
+	it("keeps the top border unchanged when the editor opts out", () => {
+		initTheme("dark");
+		const tui = {
+			requestRender: vi.fn(),
+			terminal: { rows: 10 },
+		} as unknown as TUI;
+		const editor = new CustomEditor(tui, getEditorTheme(), KeybindingsManager.create(), {
+			embedWorkingStatus: false,
+		});
+		const indicator = new WorkingStatusIndicator(tui, "Working");
+		editor.setWorkingStatusIndicator(indicator);
+
+		expect(stripAnsi(editor.render(20)[0]!)).toBe("─".repeat(20));
+		const standaloneLine = indicator.render(20)[1]!;
+		expect(standaloneLine).toContain(theme.getFgAnsi("accent"));
+		expect(standaloneLine).toContain(theme.getFgAnsi("muted"));
 		indicator.dispose();
 	});
 

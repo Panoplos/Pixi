@@ -3,7 +3,8 @@ import type { AppKeybinding, KeybindingsManager } from "../../../core/keybinding
 import type { StatusIndicator } from "./status-indicator.ts";
 
 export type CustomEditorOptions = EditorOptions & {
-	/** Render working, compaction, summarization, and retry status in the editor's top border. */
+	/** Render working, compaction, summarization, and retry status in the editor's top border. On by default, so an
+	 * extension subclass keeps the status inline without knowing about it; pass false to keep the status on its own line. */
 	embedWorkingStatus?: boolean;
 };
 
@@ -28,7 +29,7 @@ export class CustomEditor extends Editor {
 	constructor(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager, options?: CustomEditorOptions) {
 		super(tui, theme, options);
 		this.keybindings = keybindings;
-		this.embedWorkingStatus = options?.embedWorkingStatus ?? false;
+		this.embedWorkingStatus = options?.embedWorkingStatus ?? true;
 	}
 
 	setWorkingStatusIndicator(indicator: StatusIndicator | undefined): void {
@@ -146,10 +147,18 @@ export class CustomEditor extends Editor {
 
 		// Pass to parent for editor handling
 		if (this.onNavigateVertical) {
-			if (this.keybindings.matches(data, "tui.editor.cursorUp")) {
+			// Shift+arrows are expand mode's own keys, so an extension that takes the plain arrows for its own bar
+			// (OptChat's navigation) cannot swallow section navigation.
+			if (
+				this.keybindings.matches(data, "tui.editor.cursorUp") ||
+				this.keybindings.matches(data, "app.tools.expandUp")
+			) {
 				if (this.onNavigateVertical(-1)) return;
 			}
-			if (this.keybindings.matches(data, "tui.editor.cursorDown")) {
+			if (
+				this.keybindings.matches(data, "tui.editor.cursorDown") ||
+				this.keybindings.matches(data, "app.tools.expandDown")
+			) {
 				if (this.onNavigateVertical(1)) return;
 			}
 		}

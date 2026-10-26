@@ -10,8 +10,15 @@ export interface KeyTextFormatOptions {
 }
 
 function formatKeyPart(part: string, options: KeyTextFormatOptions): string {
-	const displayPart = process.platform === "darwin" && part.toLowerCase() === "alt" ? "option" : part;
-	return options.capitalize ? displayPart.charAt(0).toUpperCase() + displayPart.slice(1) : displayPart;
+	const lower = part.toLowerCase();
+	// mac keyboards label super "command" and alt "option".
+	const alias =
+		process.platform === "darwin" && lower === "alt"
+			? "option"
+			: process.platform === "darwin" && lower === "super"
+				? "cmd"
+				: part;
+	return options.capitalize ? alias.charAt(0).toUpperCase() + alias.slice(1) : alias;
 }
 
 export function formatKeyText(key: string, options: KeyTextFormatOptions = {}): string {
