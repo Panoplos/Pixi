@@ -7,6 +7,9 @@ export const BITDEER_MODELS_URL = `${BITDEER_BASE_URL}/models`;
 // is the only source of per-model limits (maxContextLen, maxOutputTokens) and reseller pricing.
 export const BITDEER_SITE_LIST_URL = "https://www.bitdeer.ai/api/model/v1/ListModels";
 const BITDEER_SITE_MODEL_URL = "https://www.bitdeer.ai/api/model/v1/GetModel";
+/** The site API publishes prices in cents per 1M tokens: `inputPrice: 14.4` is the $0.144/1M its pricing panel shows.
+ * pi's `cost` is dollars per 1M tokens. */
+const SITE_PRICE_CENTS = 100;
 
 const BITDEER_COMPAT = {
 	supportsStore: false,
@@ -87,7 +90,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			name: "DeepSeek V4.1 Flash 1017",
 			reasoning: true,
 			input: ["text", "image"],
-			cost: { input: 14.4, output: 57.6, cacheRead: 0.29, cacheWrite: 0 },
+			cost: { input: 0.144, output: 0.576, cacheRead: 0.0029, cacheWrite: 0 },
 			contextWindow: 1_048_576,
 			maxTokens: 393_216,
 		}),
@@ -96,7 +99,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			name: "DeepSeek V4.1 Flash",
 			reasoning: true,
 			input: ["text", "image"],
-			cost: { input: 14.4, output: 57.6, cacheRead: 0.29, cacheWrite: 0 },
+			cost: { input: 0.144, output: 0.576, cacheRead: 0.0029, cacheWrite: 0 },
 			contextWindow: 1_048_576,
 			maxTokens: 393_216,
 		}),
@@ -105,7 +108,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			name: "DeepSeek V4 Flash",
 			reasoning: true,
 			input: ["text"],
-			cost: { input: 14, output: 28, cacheRead: 1, cacheWrite: 0 },
+			cost: { input: 0.14, output: 0.28, cacheRead: 0.01, cacheWrite: 0 },
 			contextWindow: 1_048_576,
 			maxTokens: 393_216,
 		}),
@@ -115,7 +118,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			reasoning: true,
 			canDisableReasoning: false,
 			input: ["text"],
-			cost: { input: 63, output: 198, cacheRead: 11.7, cacheWrite: 0 },
+			cost: { input: 0.63, output: 1.98, cacheRead: 0.117, cacheWrite: 0 },
 			contextWindow: 1_048_576,
 			maxTokens: 131_072,
 		}),
@@ -125,7 +128,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			reasoning: true,
 			canDisableReasoning: false,
 			input: ["text", "image"],
-			cost: { input: 8.25, output: 27.5, cacheRead: 1.65, cacheWrite: 0 },
+			cost: { input: 0.0825, output: 0.275, cacheRead: 0.0165, cacheWrite: 0 },
 			contextWindow: 1_048_576,
 			maxTokens: 131_072,
 		}),
@@ -134,7 +137,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			name: "Qwen3.8 27B",
 			reasoning: true,
 			input: ["text", "image"],
-			cost: { input: 40, output: 240, cacheRead: 8, cacheWrite: 0 },
+			cost: { input: 0.4, output: 2.4, cacheRead: 0.08, cacheWrite: 0 },
 			contextWindow: 262_144,
 			maxTokens: 131_072,
 		}),
@@ -144,7 +147,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			reasoning: true,
 			input: ["text", "image"],
 			// Site API reports no maxOutputTokens; 32_768 is the documented max_tokens default.
-			cost: { input: 10, output: 40, cacheRead: 8, cacheWrite: 0 },
+			cost: { input: 0.1, output: 0.4, cacheRead: 0.08, cacheWrite: 0 },
 			contextWindow: 262_144,
 			maxTokens: 32_768,
 		}),
@@ -235,9 +238,9 @@ export async function fetchBitdeerSiteModelMeta(signal?: AbortSignal): Promise<M
 				contextWindow: finiteNumber(detail.maxContextLen, 0),
 				maxTokens: finiteNumber(detail.maxOutputTokens, 0),
 				cost: {
-					input: round4(finiteNumber(detail.inputPrice, 0)),
-					output: round4(finiteNumber(detail.outputPrice, 0)),
-					cacheRead: round4(finiteNumber(detail.cachedInputPrice, 0)),
+					input: round4(finiteNumber(detail.inputPrice, 0) / SITE_PRICE_CENTS),
+					output: round4(finiteNumber(detail.outputPrice, 0) / SITE_PRICE_CENTS),
+					cacheRead: round4(finiteNumber(detail.cachedInputPrice, 0) / SITE_PRICE_CENTS),
 					cacheWrite: 0,
 				},
 				hasVision: tags.some((tag) => isRecord(tag) && tag.tagId === "image-to-text"),

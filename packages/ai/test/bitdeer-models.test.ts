@@ -39,11 +39,12 @@ describe("Bitdeer catalog", () => {
 				maxTokensField: "max_tokens",
 			},
 		});
-		// Seed limits/prices are measured values from Bitdeer's site API, not vendor reference numbers.
+		// Seed limits/prices are measured values from Bitdeer's site API, not vendor reference numbers. The site
+		// prices in cents per 1M tokens ($0.144/1M shows as inputPrice 14.4), so `cost` is a hundredth of it.
 		expect(models[0]).toMatchObject({
 			contextWindow: 1_048_576,
 			maxTokens: 393_216,
-			cost: { input: 14.4, output: 57.6, cacheRead: 0.29 },
+			cost: { input: 0.144, output: 0.576, cacheRead: 0.0029 },
 		});
 	});
 
@@ -137,14 +138,14 @@ describe("Bitdeer catalog", () => {
 		// Kimi K3 left the no-key seed list; the credentialed refresh registers it from the site list.
 		expect(models.getModel("bitdeer", "moonshotai/Kimi-K3")).toBeUndefined();
 		expect((await models.refresh({ providers: ["bitdeer"] })).errors.size).toBe(0);
-		// Live site metadata replaces the seeded limits and pricing.
+		// Live site metadata replaces the seeded limits and pricing; its cents become dollars.
 		expect(models.getModel("bitdeer", "moonshotai/Kimi-K3")).toMatchObject({
 			name: "Kimi K3",
 			reasoning: true,
 			input: ["text", "image"],
 			contextWindow: 300_000,
 			maxTokens: 40_000,
-			cost: { input: 12.5, output: 50, cacheRead: 1.25, cacheWrite: 0 },
+			cost: { input: 0.125, output: 0.5, cacheRead: 0.0125, cacheWrite: 0 },
 			thinkingLevelMap: { off: "none" },
 		});
 		// The dynamic catalog replaces the refreshed list; static seed entries stay registered.
@@ -200,7 +201,7 @@ describe("Bitdeer catalog", () => {
 			input: ["text", "image"],
 			contextWindow: 262_144,
 			maxTokens: 32_768,
-			cost: { input: 14.4, output: 57.6, cacheRead: 0.29, cacheWrite: 0 },
+			cost: { input: 0.144, output: 0.576, cacheRead: 0.0029, cacheWrite: 0 },
 		});
 		// Embeddings and image models from the site list are not appended.
 		expect(models.getModel("bitdeer", "BAAI/bge-m3")).toBeUndefined();

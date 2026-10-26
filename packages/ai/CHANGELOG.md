@@ -17,6 +17,7 @@
 
 ### Fixed
 
+- Fixed Bitdeer model prices being 100× too high, which made cost reporting off by two orders of magnitude (a 195k-token request reported about $2.80 instead of $0.028). The site API publishes cents per 1M tokens (`inputPrice: 14.4` is the $0.144/1M its pricing panel shows), so both the seed catalog and the live refresh now convert to dollars
 - Fixed Bitdeer's model catalog lagging new releases: models listed on Bitdeer's public site API but missing from the key-gated `/v1/models` endpoint are now appended during refresh, and the no-key seed catalog was updated to the current measured site list (adds DeepSeek-V4.1-Flash-1017 and Nemotron 3.5 Super VL, drops Kimi-K3)
 - Fixed Claude models that accept mid-conversation system messages rejecting a session with a 400 (`role 'system' must precede an 'assistant' message`) when a system update was followed by an assistant reply with nothing to send to Anthropic, such as an empty reply or another model's reasoning-only reply ([#11091](https://github.com/earendil-works/pi/issues/11091))
 - Fixed Claude models with mid-conversation effort failing with `Invalid effort level` on accounts whose organization caps effort below `high`, even at `low` or `medium` thinking, by sending a fixed `low` top-level effort ([#10063](https://github.com/earendil-works/pi/issues/10063))
