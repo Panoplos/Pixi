@@ -91,10 +91,10 @@ function createSession(options: {
 	return session as unknown as AgentSession;
 }
 
-function createFooterData(providerCount: number): ReadonlyFooterDataProvider {
+function createFooterData(providerCount: number, statuses: Record<string, string> = {}): ReadonlyFooterDataProvider {
 	const provider = {
 		getGitBranch: () => "main",
-		getExtensionStatuses: () => new Map<string, string>(),
+		getExtensionStatuses: () => new Map<string, string>(Object.entries(statuses)),
 		getAvailableProviderCount: () => providerCount,
 		onBranchChange: (callback: () => void) => {
 			void callback;
@@ -165,6 +165,81 @@ describe("FooterComponent width handling", () => {
 		expect(line).toContain("(main)");
 		expect(line).toContain("12.3%/200k");
 		expect(line).toContain("test-model");
+	});
+
+	it("shows the RPC indicator on its own line, right-aligned under the model", () => {
+		const session = createSession({ sessionName: "" });
+		const footer = new FooterComponent(session, createFooterData(1));
+		footer.setRpcSessionId("01a17c27-1733-74b6-99f6-88d328d5526d");
+
+		const lines = footer.render(80);
+		expect(lines).toHaveLength(2);
+		const indicator = stripAnsi(lines[1]);
+		expect(indicator.trim()).toBe("rpc 01a17c27");
+		expect(visibleWidth(lines[1])).toBeLessThanOrEqual(80);
+		// Right-aligned, with the last column left free like other right-aligned footer text.
+		expect(indicator.length).toBeGreaterThanOrEqual(78);
+	});
+
+	it("shares the status line with extension statuses, right-aligned", () => {
+		const session = createSession({ sessionName: "" });
+		const footer = new FooterComponent(
+			session,
+			createFooterData(1, { optchat: "OptChat: pixi-development", ponytail: "ponytail: full" }),
+		);
+		footer.setRpcSessionId("01a17c27-1733-74b6-99f6-88d328d5526d");
+
+		const lines = footer.render(100);
+		expect(lines).toHaveLength(2);
+		const statusLine = stripAnsi(lines[1]);
+		expect(statusLine).toContain("OptChat: pixi-development");
+		expect(statusLine).toContain("ponytail: full");
+		expect(statusLine.trimEnd()).toMatch(/rpc 01a17c27$/);
+		expect(statusLine.length).toBeGreaterThanOrEqual(98);
+		expect(visibleWidth(lines[1])).toBeLessThanOrEqual(100);
+	});
+
+	it("puts stats: statuses in the stats line, not the status line", () => {
+		const session = createSession({ sessionName: "" });
+		const footer = new FooterComponent(
+			session,
+			createFooterData(1, {
+				"stats:optchat": "pixi-development",
+				optchat: "importing",
+				ponytail: "ponytail: full",
+			}),
+		);
+
+		const lines = footer.render(100);
+		expect(lines).toHaveLength(2);
+		const statsLine = stripAnsi(lines[0]);
+		expect(statsLine.split(" · ")).toContain("pixi-development");
+		const statusLine = stripAnsi(lines[1]);
+		expect(statusLine).not.toContain("pixi-development");
+		expect(statusLine).toContain("importing");
+		expect(statusLine).toContain("ponytail: full");
+	});
+
+	it("truncates statuses to leave room for the RPC indicator", () => {
+		const session = createSession({ sessionName: "" });
+		const footer = new FooterComponent(session, createFooterData(1, { optchat: "x".repeat(80) }));
+		footer.setRpcSessionId("01a17c27-1733-74b6-99f6-88d328d5526d");
+
+		const lines = footer.render(40);
+		expect(lines).toHaveLength(2);
+		const statusLine = stripAnsi(lines[1]);
+		expect(statusLine.trimEnd()).toMatch(/rpc 01a17c27$/);
+		expect(visibleWidth(lines[1])).toBeLessThanOrEqual(40);
+	});
+
+	it("stays within width when the RPC indicator has no room", () => {
+		const session = createSession({ sessionName: "" });
+		const footer = new FooterComponent(session, createFooterData(1));
+		footer.setRpcSessionId("01a17c27-1733-74b6-99f6-88d328d5526d");
+
+		for (const line of footer.render(6)) {
+			expect(visibleWidth(line)).toBeLessThanOrEqual(6);
+		}
 	});
 
 	it("shows the auto-compact indicator when enabled", () => {

@@ -18,6 +18,11 @@ function sanitizeStatusText(text: string): string {
 }
 
 /**
+ * Status keys with this prefix join the stats line (`pwd · status · CHR · context`) instead of the status line.
+ */
+const STATS_STATUS_PREFIX = "stats:";
+
+/**
  * Format token counts for compact footer display.
  */
 export function formatTokens(count: number): string {
@@ -48,6 +53,7 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
  */
 export class FooterComponent implements Component {
 	private autoCompactEnabled = true;
+	private rpcSessionId: string | undefined;
 	private session: AgentSession;
 	private footerData: ReadonlyFooterDataProvider;
 
@@ -62,6 +68,11 @@ export class FooterComponent implements Component {
 
 	setAutoCompactEnabled(enabled: boolean): void {
 		this.autoCompactEnabled = enabled;
+	}
+
+	/** Show that this session serves RPC, naming the id its socket belongs to. */
+	setRpcSessionId(sessionId: string | undefined): void {
+		this.rpcSessionId = sessionId;
 	}
 
 	/**
@@ -113,7 +124,16 @@ export class FooterComponent implements Component {
 			(branch ? theme.fg("footerBranch", ` (${branch})`) : "") +
 			(sessionName ? theme.fg("footerPath", ` • ${sessionName}`) : "");
 
-		const leftTokens: string[] = [pathText];
+		// Extension statuses, sorted by key alphabetically. `stats:` ones sit in this line, the rest share the status line.
+		const statuses = Array.from(this.footerData.getExtensionStatuses().entries()).sort(([a], [b]) =>
+			a.localeCompare(b),
+		);
+		const inlineStatuses = statuses
+			.filter(([key]) => key.startsWith(STATS_STATUS_PREFIX))
+			.map(([, text]) => sanitizeStatusText(text))
+			.filter((text) => text.length > 0);
+
+		const leftTokens: string[] = [pathText, ...inlineStatuses.map((text) => theme.fg("accent", text))];
 		if (latestCacheHitRate !== undefined) {
 			leftTokens.push(theme.fg("footerCache", `CHR:${latestCacheHitRate.toFixed(1)}%`));
 		}
@@ -192,15 +212,38 @@ export class FooterComponent implements Component {
 
 		const lines = [statsLine];
 
-		// Add extension statuses on a single line, sorted by key alphabetically
-		const extensionStatuses = this.footerData.getExtensionStatuses();
-		if (extensionStatuses.size > 0) {
-			const sortedStatuses = Array.from(extensionStatuses.entries())
-				.sort(([a], [b]) => a.localeCompare(b))
-				.map(([, text]) => sanitizeStatusText(text));
-			const statusLine = sortedStatuses.join(" ");
-			// Truncate to terminal width with dim ellipsis for consistency with footer style
-			lines.push(truncateToWidth(statusLine, width, theme.fg("dim", "...")));
+		// Right-aligned on the last status line, so the terminal keeps the last word on the session.
+		const rpcLabel = this.rpcSessionId
+			? truncateToWidth(`rpc ${this.rpcSessionId.slice(0, 8)}`, width, "")
+			: undefined;
+		const rpcText = (): string => {
+			const [word, ...rest] = (rpcLabel ?? "").split(" ");
+			return `${theme.fg("footerContextSafe", word)} ${theme.fg("dim", rest.join(" "))}`;
+		};
+
+		const lineStatuses = statuses
+			.filter(([key]) => !key.startsWith(STATS_STATUS_PREFIX))
+			.map(([, text]) => sanitizeStatusText(text))
+			.filter((text) => text.length > 0);
+		const statusText = lineStatuses.length > 0 ? lineStatuses.join(" ") : undefined;
+
+		const rpcWidth = rpcLabel ? visibleWidth(rpcLabel) : 0;
+		// One column stays free on the right, like the other right-aligned footer text.
+		const roomForStatuses = statusText ? width - rpcWidth - minPadding - 1 : 0;
+
+		if (statusText && roomForStatuses > 0) {
+			const statuses = truncateToWidth(statusText, roomForStatuses, theme.fg("dim", "..."));
+			const padding = " ".repeat(Math.max(minPadding, width - visibleWidth(statuses) - rpcWidth - 1));
+			lines.push(`${statuses}${padding}${rpcText()}`);
+		} else {
+			if (rpcLabel) {
+				const padding = " ".repeat(Math.max(0, width - rpcWidth - 1));
+				lines.push(`${padding}${rpcText()}`.trimEnd());
+			}
+			if (statusText) {
+				// Truncate to terminal width with dim ellipsis for consistency with footer style
+				lines.push(truncateToWidth(statusText, width, theme.fg("dim", "...")));
+			}
 		}
 
 		return lines;

@@ -418,6 +418,8 @@ See [examples/extensions/timed-confirm.ts](../examples/extensions/timed-confirm.
 // Status in footer (persistent until cleared)
 ctx.ui.setStatus("my-ext", "Processing...");
 ctx.ui.setStatus("my-ext", undefined);  // Clear
+// A key starting with "stats:" shows in the stats line (pwd · status · CHR · context) instead of the status line
+ctx.ui.setStatus("stats:my-ext", "profile name");
 
 // Working loader (shown during streaming)
 ctx.ui.setWorkingMessage("Thinking deeply...");

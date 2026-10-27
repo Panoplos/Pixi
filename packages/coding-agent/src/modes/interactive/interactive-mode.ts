@@ -136,6 +136,7 @@ import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { loadAllHighlightLanguages } from "../../utils/syntax-highlight.ts";
 import { ensureTool, type ToolStatus } from "../../utils/tools-manager.ts";
 import { checkForNewPiVersion, type LatestPiRelease } from "../../utils/version-check.ts";
+import { type RpcSocketServer, startRpcSocketServer } from "../rpc/socket-server.ts";
 import { reportBug } from "./bug-report.ts";
 import { createChatViewport } from "./chat-viewport.ts";
 import { ArminComponent } from "./components/armin.ts";
@@ -461,10 +462,13 @@ export interface InteractiveModeOptions {
 	initialThemeSetting?: string;
 	/** Terminal implementation. Defaults to the current process terminal. */
 	terminal?: Terminal;
+	/** Serve RPC commands on this session's socket. Defaults to off for programmatic callers. */
+	rpcSocket?: boolean;
 }
 
 export class InteractiveMode {
 	private runtimeHost: AgentSessionRuntime;
+	private rpcServer: RpcSocketServer | undefined;
 	private renderer: TuiMainScreen | TuiAltScreen;
 	private ui: TUI;
 	private mainScreenRenderState: TuiMainScreenRenderState | undefined;
@@ -1130,6 +1134,7 @@ export class InteractiveMode {
 
 		// Initialize extensions first so resources are shown before messages
 		await this.rebindCurrentSession();
+		await this.startRpcSocket();
 
 		// Render initial messages AFTER showing loaded resources
 		this.renderInitialMessages();
@@ -2119,6 +2124,33 @@ export class InteractiveMode {
 			this.editor.setPaddingX?.(editorPaddingX);
 			this.editor.setPrefix?.(prefix);
 			this.editor.setAutocompleteMaxVisible?.(autocompleteMaxVisible);
+		}
+	}
+
+	/**
+	 * Serve the same commands RPC mode reads on stdin, on a socket, so another
+	 * program can drive this session while the TUI stays the UI.
+	 */
+	private async startRpcSocket(): Promise<void> {
+		if (!this.options.rpcSocket) return;
+		const mode = this;
+		// The socket keeps the id it was created for, even after the session is replaced.
+		const sessionId = this.session.sessionId;
+		try {
+			this.rpcServer = await startRpcSocketServer({
+				deps: {
+					get session() {
+						return mode.session;
+					},
+					runtimeHost: this.runtimeHost,
+					// Dialogs stay in the terminal: this is still an interactive session.
+					rebindSession: () => this.rebindCurrentSession(),
+				},
+			});
+			this.footer.setRpcSessionId(sessionId);
+			this.ui.requestRender();
+		} catch (error) {
+			this.flashToast(`RPC socket: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 
@@ -3590,6 +3622,7 @@ export class InteractiveMode {
 		this.unsubscribe = this.session.subscribe(async (event) => {
 			await this.handleEvent(event);
 		});
+		this.rpcServer?.resubscribe();
 	}
 
 	private async handleEvent(event: AgentSessionEvent): Promise<void> {
@@ -7710,6 +7743,8 @@ export class InteractiveMode {
 	}
 
 	stop(fullscreenExitOutput = this.settingsManager.getFullscreenExitOutput()): void {
+		this.rpcServer?.close();
+		this.rpcServer = undefined;
 		this.disposeActiveSelector();
 		if (this.toastStatusTimer) clearTimeout(this.toastStatusTimer);
 		this.toastStatusTimer = undefined;
