@@ -60,6 +60,7 @@ Changes on top of upstream:
 ![Thinking activity while Pixi works](docs/images/thinking-activity.gif)
 
 - **Configurable prompt prefix** — the input editor prefix is a `promptPrefix` setting with a matching optional theme color (falls back to `accent`).
+- **RPC on a running session** — an interactive session serves the RPC protocol on `~/.pi/agent/rpc/<session id>.sock`, so a script or editor can prompt or inspect a session you are using in the terminal; the footer shows `rpc <session id>` while it is on, and `--no-rpc` turns it off. See [RPC mode](packages/coding-agent/docs/rpc.md#drive-a-running-interactive-session) and [CLI Integration](packages/coding-agent/docs/cli-integration.md#control-pi-with-rpc) for `RpcClient` and `connectRpcClient()`.
 - **Secret masking example** — [`key-guard.ts`](packages/coding-agent/examples/extensions/key-guard.ts) masks API keys, tokens, and PEM blocks before they enter model context.
 
 ## Getting started
