@@ -1,8 +1,8 @@
 diff --git a/src/transcript.ts b/src/transcript.ts
-index eac10ad..e3d9790 100644
+index eac10ad..b5fcccf 100644
 --- a/src/transcript.ts
 +++ b/src/transcript.ts
-@@ -205,19 +205,68 @@ export function lastStep(run: readonly AgentMessage[]) {
+@@ -205,19 +205,74 @@ export function lastStep(run: readonly AgentMessage[]) {
    return step > task && task >= 0 ? step : 0;
  }
  /** The run's new `keep` and the size it moves into the view, when what is sent since the last refresh passes the budget.
@@ -69,6 +69,12 @@ index eac10ad..e3d9790 100644
 +  });
 +  return cut ? { ...message, content } : message;
 +}
++/** How full the turn's verbatim tail is of its refresh budget, as the footer shows it: at 100% the next step moves into memory. */
++export function turnUsage(run: readonly AgentMessage[], keep: number, budget: number | undefined) {
++  if (!budget) return undefined;
++  const contextWindow = Math.floor(budget / 4), tokens = Math.floor(chars(run.slice(keep)) / 4);
++  return { tokens, contextWindow, percent: (tokens / contextWindow) * 100 };
++}
 +/** The run as sent after a mid-turn refresh at `keep`: the task verbatim, then the run from `keep` on, both held to `budget`
 + * characters so a single step, such as many parallel tool results, cannot outgrow the window. Everything between is in the view. */
 +export function refreshedRun(run: readonly AgentMessage[], keep: number, note: string, budget?: number): AgentMessage[] {
@@ -80,22 +86,32 @@ index eac10ad..e3d9790 100644
 +  return bounded([{ ...task, content: [...content, { type: 'text' as const, text: `\n\n${note}` }] }, ...run.slice(keep)], budget);
  }
 diff --git a/test/mid-turn-refresh.test.ts b/test/mid-turn-refresh.test.ts
-index e9e8f95..4a62c0f 100644
+index e9e8f95..8afabb5 100644
 --- a/test/mid-turn-refresh.test.ts
 +++ b/test/mid-turn-refresh.test.ts
-@@ -9,6 +9,7 @@ import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager
+@@ -8,7 +8,8 @@ import { createAssistantMessageEventStream, type AssistantMessage, type Context
+ import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
  import optchat from '../src/index.ts';
  import { createProfile, loadConfig, profilePath, saveConfig } from '../src/profiles.ts';
- import { buildContext, messageChars, refreshBudget, refreshedRun, refreshFraction, refreshPoint, textContent } from '../src/transcript.ts';
+-import { buildContext, messageChars, refreshBudget, refreshedRun, refreshFraction, refreshPoint, textContent } from '../src/transcript.ts';
++import { buildContext, messageChars, refreshBudget, refreshedRun, refreshFraction, refreshPoint, textContent, turnUsage } from '../src/transcript.ts';
 +const chars = (messages: readonly AgentMessage[]) => messages.reduce((sum, m) => sum + messageChars(m), 0);
  import { parsePercent } from '../src/settings-page.ts';
  import { invalid } from '../src/settings.ts';
  import { subagentCompaction } from '../src/agents.ts';
-@@ -37,15 +38,44 @@ test('the threshold is typed as 30, 30% or 0.3, OPTCHAT_REFRESH_AT overrides it,
+@@ -37,15 +38,52 @@ test('the threshold is typed as 30, 30% or 0.3, OPTCHAT_REFRESH_AT overrides it,
    assert.equal(refreshBudget(200_000, refreshFraction(0.3, '0')), undefined);
  });
  
 -test('a last step too big to keep under half the budget waits for a smaller one instead of refreshing every call', () => {
++test('the footer figure is the tail against the refresh budget, and nothing when the refresh is off', () => {
++  const run: AgentMessage[] = [{ role: 'user', content: 'task', timestamp: 1 },
++    { role: 'user', content: 'y'.repeat(80), timestamp: 2 }];
++  assert.deepEqual(turnUsage(run, 1, 400), { tokens: 20, contextWindow: 100, percent: 20 }, 'the tail alone, not the task');
++  assert.equal(turnUsage(run, 0, undefined), undefined, 'off, so Pi keeps showing its own figure');
++  assert.equal(turnUsage(run, 1, 40)?.percent, 200, 'a step over the budget reads past 100%');
++});
++
 +test('a step too big to keep whole is refreshed anyway, its tail cut to the budget', () => {
    const step = (id: string, text: string): AgentMessage[] => [reply([{ type: 'toolCall', id, name: 'read', arguments: {} }], 'toolUse'),
      { role: 'toolResult', toolCallId: id, toolName: 'read', content: [{ type: 'text', text }], isError: false, timestamp: 3 }];

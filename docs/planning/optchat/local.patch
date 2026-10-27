@@ -49,10 +49,16 @@ index de86d01..e0237a1 100644
  6. **Profiles**, the **inspector**, the **usage ledger**, **import**, and **connected windows** are additions. Import adds historical-record guidance to the prompts.
  7. **Not done**: computer use and hosting on an always-on machine.
 diff --git a/src/index.ts b/src/index.ts
-index c9caf4e..546c364 100644
+index c9caf4e..15338b4 100644
 --- a/src/index.ts
 +++ b/src/index.ts
-@@ -9,7 +9,7 @@ import { Type } from 'typebox';
+@@ -4,16 +4,16 @@ import { join } from 'node:path';
+ import { hostname } from 'node:os';
+ import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
+ import type { AgentMessage } from '@earendil-works/pi-agent-core';
+-import { parseArgs, parseSkillBlock, type ExtensionAPI, type ExtensionContext, type ExtensionCommandContext } from '@earendil-works/pi-coding-agent';
++import { parseArgs, parseSkillBlock, type ContextUsage, type ExtensionAPI, type ExtensionContext, type ExtensionCommandContext, type ExtensionUIContext } from '@earendil-works/pi-coding-agent';
+ import { Type } from 'typebox';
  import { Memory } from './memory.ts';
  import { atomicWrite, storeFor } from './store.ts';
  import { createCompressor, type ModelChoice } from './compactor.ts';
@@ -61,7 +67,22 @@ index c9caf4e..546c364 100644
  import { allowSearch, CONTINUITY, IMPORT_GUIDANCE, MASTER, modelsHint, SEARCH_DOC, TURN_REFRESHED, VIEW_DOC } from './prompts.ts';
  import { cachePayload, record } from './cache.ts';
  import { saveImages } from './images.ts';
-@@ -132,9 +132,15 @@ export default function optchat(pi: ExtensionAPI) {
+-import { asUser, boundedMessage, atWork, buildContext, logMessage, previousExchange, refreshedRun, refreshBudget, refreshFraction, refreshPoint, reportReceipt, REPORT_RECEIPT, REPORT_TYPE, RUN_BOUNDARY, textContent, typedText } from './transcript.ts';
++import { asUser, boundedMessage, atWork, buildContext, logMessage, previousExchange, refreshedRun, refreshBudget, refreshFraction, refreshPoint, turnUsage, reportReceipt, REPORT_RECEIPT, REPORT_TYPE, RUN_BOUNDARY, textContent, typedText } from './transcript.ts';
+ import { registerReportRenderer, type ReportDetails } from './report-message.ts';
+ import { memoryTools, result, searchTool } from './tools.ts';
+ import { Children, loadedBuiltins, modelsTool, refreshContextFiles, TASKS } from './agents.ts';
+@@ -59,6 +59,9 @@ export const version = ((): string | undefined => {
+ })();
+ const brand = version ? `OptChat v${version}` : 'OptChat';
+ 
++/** Pi's `setContextUsage`, which the pinned Pi types predate; a Pi without it shows its own context figure instead. */
++const usageSlot = (ui: ExtensionUIContext) => ui as ExtensionUIContext & { setContextUsage?: (usage: ContextUsage | undefined) => void };
++
+ export default function optchat(pi: ExtensionAPI) {
+   let active: Active | undefined;
+   let remote: Awaited<ReturnType<typeof openConnectedWindow>> | undefined;
+@@ -132,9 +135,15 @@ export default function optchat(pi: ExtensionAPI) {
    };
    pi.on('model_select', (_event, ctx) => rememberMain(ctx));
    pi.on('thinking_level_select', (_event, ctx) => rememberMain(ctx));
@@ -79,7 +100,7 @@ index c9caf4e..546c364 100644
      const model = ctx.modelRegistry.find(main.provider, main.model), thinking = launch.thinking ?? main.thinking;
      restoring = true;
      try {
-@@ -150,12 +156,14 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -150,12 +159,14 @@ export default function optchat(pi: ExtensionAPI) {
    const required = () => { if (!active) throw new Error('Choose an OptChat profile first: /optchat profile'); return active; };
    const status = (ctx: ExtensionContext) => {
      const a = active;
@@ -99,7 +120,7 @@ index c9caf4e..546c364 100644
    };
    // `steered` describes this process's Pi queue, so it is not journaled.
    const saveReports = () => { if (active) atomicWrite(join(active.dir, 'pending-reports.json'), JSON.stringify(reports, (key, value: unknown) => key === 'steered' ? undefined : value)); };
-@@ -230,13 +238,20 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -230,13 +241,20 @@ export default function optchat(pi: ExtensionAPI) {
      let openingMemory: Memory | undefined;
      try {
        const config = loadConfig(dir);
@@ -121,7 +142,7 @@ index c9caf4e..546c364 100644
          usage.compression(message, 'compactor', sessionId);
          status(ctx);
        }, () => config.summaryAcceptBytes), warning => ctx.ui.notify(warning, 'error'), undefined, config.jobs);
-@@ -244,9 +259,9 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -244,9 +262,9 @@ export default function optchat(pi: ExtensionAPI) {
        const inbox = new Inbox(dir);
        const recovered = pendingImport(dir) ? 0 : inbox.recover(memory);
        if (recovered) ctx.ui.notify(`Recovered ${recovered} unanswered inputs into ${name}'s memory. Ask to continue them when ready.`, 'info');
@@ -133,7 +154,7 @@ index c9caf4e..546c364 100644
        const loggedReports = new Set(memory.root.map(e => e.receipt));
        // Reports a crash held back with their unfinished siblings are delivered now, as they are.
        reports = saved.map(s => typeof s === 'string' ? { text: s } : { text: s.text, count: s.count })
-@@ -260,7 +275,8 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -260,7 +278,8 @@ export default function optchat(pi: ExtensionAPI) {
        if (ctx.mode !== 'print' && ctx.mode !== 'json') closeWindows = await serveWindows(dir, children, () => !stopping && !importing && !pendingImport(dir), deliverReport);
        untitle = children.subscribe(() => showTitle(ctx)); showTitle(ctx);
        status(ctx);
@@ -143,7 +164,7 @@ index c9caf4e..546c364 100644
        const queuedReports = [...reports];
        if (!pendingImport(dir)) {
          const recover = (work: Promise<void>, what: string) => work.catch(error => ctx.ui.notify(`${what}: ${errorText(error)}`, 'error'));
-@@ -421,7 +437,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -421,7 +440,7 @@ export default function optchat(pi: ExtensionAPI) {
      const a = required();
      // Pi's own prompt sections (AGENTS.md files, skills, cwd) stay; the profile's instructions go last.
      syncSearch(a.config);
@@ -152,7 +173,16 @@ index c9caf4e..546c364 100644
      event.systemPromptOptions.sections.instructions = `${instructions(a.dir)}\n\n${IMPORT_GUIDANCE}`;
      refreshContextFiles(event.systemPromptOptions);
      prompt = event.systemPrompt;
-@@ -489,7 +505,8 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -466,7 +485,7 @@ export default function optchat(pi: ExtensionAPI) {
+   });
+   pi.on('context_with_system', async (event, ctx) => {
+     try {
+-      if (!active) return; // Plain Pi run: pass context through unmodified.
++      if (!active) { usageSlot(ctx.ui).setContextUsage?.(undefined); return; } // Plain Pi run: pass context through unmodified.
+       const a = required();
+       if (importing || pendingImport(a.dir)) throw new Error('Profile is unavailable while importing.');
+       if (fault) throw new Error(fault);
+@@ -489,7 +508,8 @@ export default function optchat(pi: ExtensionAPI) {
        const current = ctx.getSystemPrompt();
        if (current.startsWith(MASTER.slice(0, 40))) prompt = current;
        // A turn past its budget moves its steps into the view, keeping the task and the last tool call whole (#146).
@@ -162,16 +192,19 @@ index c9caf4e..546c364 100644
        if (refresh) {
          const { cut, size } = refresh, began = Date.now();
          ctx.ui.setWorkingMessage(`OptChat: moving this turn's ${Math.round(size / 4000)}k tokens into memory…`);
-@@ -498,7 +515,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -497,8 +517,10 @@ export default function optchat(pi: ExtensionAPI) {
+         view = a.memory.render(); keep = cut;
          ctx.ui.notify(`OptChat moved ${Math.round(size / 4000)}k tokens of this turn into memory (${((Date.now() - began) / 1000).toFixed(1)}s).`, 'info');
        }
++      // The footer's context figure is the tail against this profile's refresh threshold, the number the turn is actually held to.
++      usageSlot(ctx.ui).setContextUsage?.(turnUsage(run, keep, budget));
        // Built on every call, unlike the view, so it is never out of date; it goes last, after everything cached.
 -      return { messages: buildContext(event.messages, refreshedRun(run, keep, TURN_REFRESHED), view, promptFor(prompt, a.config), previous, atWork(a.children.working)) };
 +      return { messages: buildContext(event.messages, refreshedRun(run, keep, TURN_REFRESHED, budget), view, promptFor(prompt, a.config), previous, atWork(a.children.working)) };
      } catch (error) {
        // Pi catches extension errors. Explicitly abort so it cannot fall back to old context.
        ctx.abort();
-@@ -509,8 +526,12 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -509,8 +531,12 @@ export default function optchat(pi: ExtensionAPI) {
    });
    pi.on('before_provider_request', (event, ctx) => ctx.model?.api === 'anthropic-messages' ? cachePayload(event.payload) : event.payload);
    pi.on('cache_warming_decision', () => ({ action: 'stop' }));
@@ -186,7 +219,7 @@ index c9caf4e..546c364 100644
      return { cancel: true };
    });
    const collectUsage = (ctx: ExtensionContext) => {
-@@ -593,7 +614,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -593,7 +619,7 @@ export default function optchat(pi: ExtensionAPI) {
      if (!action) {
        const a = active;
        action = await showMenu(ctx, brand, a && { profile: a.name, messages: a.memory.root.length, pending: a.memory.pending,
@@ -195,7 +228,7 @@ index c9caf4e..546c364 100644
      }
      if (action === 'import') {
        const a = required();
-@@ -612,7 +633,8 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -612,7 +638,8 @@ export default function optchat(pi: ExtensionAPI) {
            }
            if (selected !== 'Resume import') return;
          } else {
@@ -205,7 +238,7 @@ index c9caf4e..546c364 100644
            if (!plan) return;
            signal.throwIfAborted();
            flush(); a.inbox.recover(a.memory); await checkpoints; await a.memory.close(); closed = true;
-@@ -621,7 +643,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -621,7 +648,7 @@ export default function optchat(pi: ExtensionAPI) {
            if (!job) return;
          }
          if (!closed) { await a.memory.close(); closed = true; }
@@ -374,10 +407,10 @@ index cf7843e..7d7fb4e 100644
  }
 +export type { Role };
 diff --git a/src/transcript.ts b/src/transcript.ts
-index eac10ad..e3d9790 100644
+index eac10ad..b5fcccf 100644
 --- a/src/transcript.ts
 +++ b/src/transcript.ts
-@@ -205,19 +205,68 @@ export function lastStep(run: readonly AgentMessage[]) {
+@@ -205,19 +205,74 @@ export function lastStep(run: readonly AgentMessage[]) {
    return step > task && task >= 0 ? step : 0;
  }
  /** The run's new `keep` and the size it moves into the view, when what is sent since the last refresh passes the budget.
@@ -443,6 +476,12 @@ index eac10ad..e3d9790 100644
 +    return block.type === 'thinking' ? { ...block, thinking: shortened } : { ...block, text: shortened };
 +  });
 +  return cut ? { ...message, content } : message;
++}
++/** How full the turn's verbatim tail is of its refresh budget, as the footer shows it: at 100% the next step moves into memory. */
++export function turnUsage(run: readonly AgentMessage[], keep: number, budget: number | undefined) {
++  if (!budget) return undefined;
++  const contextWindow = Math.floor(budget / 4), tokens = Math.floor(chars(run.slice(keep)) / 4);
++  return { tokens, contextWindow, percent: (tokens / contextWindow) * 100 };
 +}
 +/** The run as sent after a mid-turn refresh at `keep`: the task verbatim, then the run from `keep` on, both held to `budget`
 + * characters so a single step, such as many parallel tool results, cannot outgrow the window. Everything between is in the view. */
@@ -633,22 +672,32 @@ index 0de7a2a..e562604 100644
    menu.handleInput('\x1b');
    assert.deepEqual(chosen, ['settings', undefined]);
 diff --git a/test/mid-turn-refresh.test.ts b/test/mid-turn-refresh.test.ts
-index e9e8f95..4a62c0f 100644
+index e9e8f95..8afabb5 100644
 --- a/test/mid-turn-refresh.test.ts
 +++ b/test/mid-turn-refresh.test.ts
-@@ -9,6 +9,7 @@ import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager
+@@ -8,7 +8,8 @@ import { createAssistantMessageEventStream, type AssistantMessage, type Context
+ import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
  import optchat from '../src/index.ts';
  import { createProfile, loadConfig, profilePath, saveConfig } from '../src/profiles.ts';
- import { buildContext, messageChars, refreshBudget, refreshedRun, refreshFraction, refreshPoint, textContent } from '../src/transcript.ts';
+-import { buildContext, messageChars, refreshBudget, refreshedRun, refreshFraction, refreshPoint, textContent } from '../src/transcript.ts';
++import { buildContext, messageChars, refreshBudget, refreshedRun, refreshFraction, refreshPoint, textContent, turnUsage } from '../src/transcript.ts';
 +const chars = (messages: readonly AgentMessage[]) => messages.reduce((sum, m) => sum + messageChars(m), 0);
  import { parsePercent } from '../src/settings-page.ts';
  import { invalid } from '../src/settings.ts';
  import { subagentCompaction } from '../src/agents.ts';
-@@ -37,15 +38,44 @@ test('the threshold is typed as 30, 30% or 0.3, OPTCHAT_REFRESH_AT overrides it,
+@@ -37,15 +38,52 @@ test('the threshold is typed as 30, 30% or 0.3, OPTCHAT_REFRESH_AT overrides it,
    assert.equal(refreshBudget(200_000, refreshFraction(0.3, '0')), undefined);
  });
  
 -test('a last step too big to keep under half the budget waits for a smaller one instead of refreshing every call', () => {
++test('the footer figure is the tail against the refresh budget, and nothing when the refresh is off', () => {
++  const run: AgentMessage[] = [{ role: 'user', content: 'task', timestamp: 1 },
++    { role: 'user', content: 'y'.repeat(80), timestamp: 2 }];
++  assert.deepEqual(turnUsage(run, 1, 400), { tokens: 20, contextWindow: 100, percent: 20 }, 'the tail alone, not the task');
++  assert.equal(turnUsage(run, 0, undefined), undefined, 'off, so Pi keeps showing its own figure');
++  assert.equal(turnUsage(run, 1, 40)?.percent, 200, 'a step over the budget reads past 100%');
++});
++
 +test('a step too big to keep whole is refreshed anyway, its tail cut to the budget', () => {
    const step = (id: string, text: string): AgentMessage[] => [reply([{ type: 'toolCall', id, name: 'read', arguments: {} }], 'toolUse'),
      { role: 'toolResult', toolCallId: id, toolName: 'read', content: [{ type: 'text', text }], isError: false, timestamp: 3 }];
