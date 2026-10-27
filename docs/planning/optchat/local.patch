@@ -49,7 +49,7 @@ index 929c4cd..fb0138e 100644
  6. **Profiles**, the **inspector**, the **usage ledger**, **import**, and **connected windows** are additions. Import adds historical-record guidance to the prompts.
  7. **Not done**: computer use and hosting on an always-on machine.
 diff --git a/src/index.ts b/src/index.ts
-index c9caf4e..e118b75 100644
+index c9caf4e..3dde584 100644
 --- a/src/index.ts
 +++ b/src/index.ts
 @@ -9,7 +9,7 @@ import { Type } from 'typebox';
@@ -61,7 +61,27 @@ index c9caf4e..e118b75 100644
  import { allowSearch, CONTINUITY, IMPORT_GUIDANCE, MASTER, modelsHint, SEARCH_DOC, TURN_REFRESHED, VIEW_DOC } from './prompts.ts';
  import { cachePayload, record } from './cache.ts';
  import { saveImages } from './images.ts';
-@@ -230,13 +230,21 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -150,12 +150,14 @@ export default function optchat(pi: ExtensionAPI) {
+   const required = () => { if (!active) throw new Error('Choose an OptChat profile first: /optchat profile'); return active; };
+   const status = (ctx: ExtensionContext) => {
+     const a = active;
+-    if (!a) { ctx.ui.setStatus('optchat', 'OptChat: choose profile'); return; }
++    if (!a) { ctx.ui.setStatus('stats:optchat', 'choose profile'); ctx.ui.setStatus('optchat', undefined); return; }
+     // A display only: a broken import journal is refused where it matters, never here.
+-    let note = '';
+-    try { note = importing ? ' · importing' : pendingImport(a.dir) ? ' · import paused: /optchat import' : ''; }
+-    catch { note = ' · import journal invalid'; }
+-    ctx.ui.setStatus('optchat', `OptChat: ${a.name} · ${a.memory.root.length} messages · ${a.memory.pending} pending · ${a.children.ids.length} agents${note}`);
++    let note: string | undefined;
++    try { note = importing ? 'importing' : pendingImport(a.dir) ? 'import paused: /optchat import' : undefined; }
++    catch { note = 'import journal invalid'; }
++    // The name sits in Pi's stats line; only a state that needs a word gets the status line.
++    ctx.ui.setStatus('stats:optchat', a.name);
++    ctx.ui.setStatus('optchat', note);
+   };
+   // `steered` describes this process's Pi queue, so it is not journaled.
+   const saveReports = () => { if (active) atomicWrite(join(active.dir, 'pending-reports.json'), JSON.stringify(reports, (key, value: unknown) => key === 'steered' ? undefined : value)); };
+@@ -230,13 +232,21 @@ export default function optchat(pi: ExtensionAPI) {
      let openingMemory: Memory | undefined;
      try {
        const config = loadConfig(dir);
@@ -84,7 +104,7 @@ index c9caf4e..e118b75 100644
          usage.compression(message, 'compactor', sessionId);
          status(ctx);
        }, () => config.summaryAcceptBytes), warning => ctx.ui.notify(warning, 'error'), undefined, config.jobs);
-@@ -244,9 +252,9 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -244,9 +254,9 @@ export default function optchat(pi: ExtensionAPI) {
        const inbox = new Inbox(dir);
        const recovered = pendingImport(dir) ? 0 : inbox.recover(memory);
        if (recovered) ctx.ui.notify(`Recovered ${recovered} unanswered inputs into ${name}'s memory. Ask to continue them when ready.`, 'info');
@@ -96,7 +116,7 @@ index c9caf4e..e118b75 100644
        const loggedReports = new Set(memory.root.map(e => e.receipt));
        // Reports a crash held back with their unfinished siblings are delivered now, as they are.
        reports = saved.map(s => typeof s === 'string' ? { text: s } : { text: s.text, count: s.count })
-@@ -260,7 +268,8 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -260,7 +270,8 @@ export default function optchat(pi: ExtensionAPI) {
        if (ctx.mode !== 'print' && ctx.mode !== 'json') closeWindows = await serveWindows(dir, children, () => !stopping && !importing && !pendingImport(dir), deliverReport);
        untitle = children.subscribe(() => showTitle(ctx)); showTitle(ctx);
        status(ctx);
@@ -106,7 +126,7 @@ index c9caf4e..e118b75 100644
        const queuedReports = [...reports];
        if (!pendingImport(dir)) {
          const recover = (work: Promise<void>, what: string) => work.catch(error => ctx.ui.notify(`${what}: ${errorText(error)}`, 'error'));
-@@ -421,7 +430,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -421,7 +432,7 @@ export default function optchat(pi: ExtensionAPI) {
      const a = required();
      // Pi's own prompt sections (AGENTS.md files, skills, cwd) stay; the profile's instructions go last.
      syncSearch(a.config);
@@ -115,7 +135,7 @@ index c9caf4e..e118b75 100644
      event.systemPromptOptions.sections.instructions = `${instructions(a.dir)}\n\n${IMPORT_GUIDANCE}`;
      refreshContextFiles(event.systemPromptOptions);
      prompt = event.systemPrompt;
-@@ -489,7 +498,8 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -489,7 +500,8 @@ export default function optchat(pi: ExtensionAPI) {
        const current = ctx.getSystemPrompt();
        if (current.startsWith(MASTER.slice(0, 40))) prompt = current;
        // A turn past its budget moves its steps into the view, keeping the task and the last tool call whole (#146).
@@ -125,7 +145,7 @@ index c9caf4e..e118b75 100644
        if (refresh) {
          const { cut, size } = refresh, began = Date.now();
          ctx.ui.setWorkingMessage(`OptChat: moving this turn's ${Math.round(size / 4000)}k tokens into memory…`);
-@@ -498,7 +508,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -498,7 +510,7 @@ export default function optchat(pi: ExtensionAPI) {
          ctx.ui.notify(`OptChat moved ${Math.round(size / 4000)}k tokens of this turn into memory (${((Date.now() - began) / 1000).toFixed(1)}s).`, 'info');
        }
        // Built on every call, unlike the view, so it is never out of date; it goes last, after everything cached.
@@ -134,7 +154,7 @@ index c9caf4e..e118b75 100644
      } catch (error) {
        // Pi catches extension errors. Explicitly abort so it cannot fall back to old context.
        ctx.abort();
-@@ -509,8 +519,12 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -509,8 +521,12 @@ export default function optchat(pi: ExtensionAPI) {
    });
    pi.on('before_provider_request', (event, ctx) => ctx.model?.api === 'anthropic-messages' ? cachePayload(event.payload) : event.payload);
    pi.on('cache_warming_decision', () => ({ action: 'stop' }));
@@ -149,7 +169,7 @@ index c9caf4e..e118b75 100644
      return { cancel: true };
    });
    const collectUsage = (ctx: ExtensionContext) => {
-@@ -593,7 +607,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -593,7 +609,7 @@ export default function optchat(pi: ExtensionAPI) {
      if (!action) {
        const a = active;
        action = await showMenu(ctx, brand, a && { profile: a.name, messages: a.memory.root.length, pending: a.memory.pending,
@@ -158,7 +178,7 @@ index c9caf4e..e118b75 100644
      }
      if (action === 'import') {
        const a = required();
-@@ -612,7 +626,8 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -612,7 +628,8 @@ export default function optchat(pi: ExtensionAPI) {
            }
            if (selected !== 'Resume import') return;
          } else {
@@ -168,7 +188,7 @@ index c9caf4e..e118b75 100644
            if (!plan) return;
            signal.throwIfAborted();
            flush(); a.inbox.recover(a.memory); await checkpoints; await a.memory.close(); closed = true;
-@@ -621,7 +636,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -621,7 +638,7 @@ export default function optchat(pi: ExtensionAPI) {
            if (!job) return;
          }
          if (!closed) { await a.memory.close(); closed = true; }
@@ -663,3 +683,29 @@ index d63767e..7d40f99 100644
      const step = page.render(100).join('\n');
      assert.match(step, /Thinking level[\s\S]*low[\s\S]*high/);
      assert.doesNotMatch(step, /^\W*(off|minimal)\s*$/m);
+diff --git a/test/title.test.ts b/test/title.test.ts
+index 2b88dce..434ac5a 100644
+--- a/test/title.test.ts
++++ b/test/title.test.ts
+@@ -102,9 +102,9 @@ test('the main window title follows the real Pi session: profile, working, runni
+     session = (await createAgentSession({ modelRuntime: runtime, model: runtime.getModel('fixture', 'fixture'),
+       resourceLoader: loader, settingsManager, sessionManager: manager, tools: ['zoom', 'date', 'spawn'] })).session;
+     const titles: string[] = [];
+-    const statuses: (string | undefined)[] = [];
++    const statuses: [string, string | undefined][] = [];
+     const uiContext: ExtensionUIContext = { ...session.extensionRunner.getUIContext(), setTitle: title => { titles.push(title); },
+-      setStatus: (_key, text) => { statuses.push(text); } };
++      setStatus: (key, text) => { statuses.push([key, text]); } };
+     await session.bindExtensions({ uiContext });
+ 
+     assert.equal(titles[0], 'π fixture');
+@@ -119,7 +119,8 @@ test('the main window title follows the real Pi session: profile, working, runni
+     mkdirSync(join(profilePath('fixture'), 'imports'), { recursive: true }); writeFileSync(journal, '{');
+     release(); await running; await session.agent.waitForIdle();
+     await until(() => titles.at(-1) === 'π fixture');
+-    assert.match(statuses.at(-1) ?? '', / · import journal invalid$/);
++    assert.deepEqual(statuses.filter(([key]) => key === 'optchat').at(-1), ['optchat', 'import journal invalid']);
++    assert.deepEqual(statuses.filter(([key]) => key === 'stats:optchat').at(-1), ['stats:optchat', 'fixture']);
+     rmSync(journal);
+ 
+     const before = titles.length;

@@ -2,33 +2,34 @@
 
 ## Did we fork it?
 
-No. There is no fork, no branch, no push.
+Yes, since 2026-10-27: [`Panoplos/pi-optchat`](https://github.com/Panoplos/pi-optchat), forked from upstream [`jonaslsaa/pi-optchat`](https://github.com/jonaslsaa/pi-optchat).
 
-We run upstream [`jonaslsaa/pi-optchat`](https://github.com/jonaslsaa/pi-optchat) 0.9.2, installed through pi's package manager as `npm:pi-optchat` in `~/.pi/agent/settings.json`. Everything local is two uncommitted edits to the installed copy:
-
-- `~/.pi/agent/npm/node_modules/pi-optchat/src/` is the code pi actually loads.
-- `docs/planning/optchat/local.patch` is the full local diff against upstream `197e17e` (release 0.9.2).
+- Branch `local` is our work: one commit on top of upstream `197e17e` (release 0.9.2), the version pi has installed as `npm:pi-optchat` in `~/.pi/agent/settings.json`. The clone at `~/Development/pi-optchat` is on that branch and its sources are identical to the installed copy.
+- Fork `main` is untouched upstream, already at `2714a3f` (release 0.10.0, connected-window handoffs). The patch applies to it cleanly except for a conflict in `README.md`; moving the clone onto 0.10.0 has not been done, because the installed copy would then differ from it.
+- `docs/planning/optchat/local.patch` is the full local diff against upstream `197e17e`, the same change as the `local` commit.
 - `docs/planning/optchat/optchat-bounded-tail.patch` is the subset meant for an upstream issue: the mid-run refresh changes in `src/transcript.ts` and their tests. The overflow-passthrough hunk in `src/index.ts` is only in `local.patch`.
 
-The working clone lived at `/tmp/pi-optchat` and is disposable. To rebuild from scratch:
+To rebuild the clone from scratch:
 
 ```
-git clone https://github.com/jonaslsaa/pi-optchat /tmp/pi-optchat
-cd /tmp/pi-optchat && git checkout 197e17e
-git apply docs/planning/optchat/local.patch      # run from the pi repo root
+git clone -b local https://github.com/Panoplos/pi-optchat ~/Development/pi-optchat
+cd ~/Development/pi-optchat
 npm install && npx tsc --noEmit && npm test
 cp src/*.ts ~/.pi/agent/npm/node_modules/pi-optchat/src/
 ```
 
-A `pixi install`/npm refresh of the package dir discards the patch. Re-apply it, then check the extension still loads (`pixi --mode rpc --no-session`, expect `OptChat: choose profile` and empty stderr).
+Without network access to the fork, a plain clone of upstream `197e17e` plus `git apply docs/planning/optchat/local.patch` (run from the pi repo root) gives the same tree.
+
+A `pixi install`/npm refresh of the package dir discards the patch. Re-apply it, then check the extension still loads (`pixi --mode rpc --no-session`, expect `choose profile` in the footer's stats line and empty stderr).
 
 ## What the local patch changes
 
 1. **Bounded tail on a mid-run refresh, with a cacheable shape.** `refreshPoint` refused to refresh while task + last step exceeded half the turn budget, and a step with several large tool results can exceed it on its own. `refreshedRun` now always cuts, keeping tool calls and images whole. The caps come from the budget alone — the task takes up to half of it, every other message an eighth — never from how many messages the step has added, so a message already sent is byte-identical in the next call and the provider's prefix cache still matches it. Before that, the per-message share was `(budget - taskKeep) / messages.length`, which re-cut every message on every call and pinned the main agent's cache hit rate to the view boundary (23% on a measured long turn, against 99% for subagents).
 2. **Overflow no longer cancels compaction.** `session_before_compact` still cancels `manual` and `threshold` (memory owns the context), but returns undefined for `reason: 'overflow'`, so pi compacts and retries instead of ending the turn.
 3. **The compactor and subagents follow Pi's model.** `compactor`/`subagent` are optional per profile; absent means "use the model Pi is on, at its thinking level". `/optchat model` and `/optchat agents model` list *Pi's model* as the first row to clear a pin. Previously both defaulted to hard-coded Anthropic models (Sonnet 5.5 medium / Opus 5.5 high), which is wrong on any other provider.
+4. **The footer status is the profile name only.** `setStatus('stats:optchat', name)` puts the profile name in pi's stats line (`pwd · name · CHR · context`) in the accent color; `setStatus('optchat', ...)` carries only import notes (`importing`, `import paused`, `import journal invalid`). The message, pending, and agent counts are gone from the footer. This needs pi's `stats:` key support (this repo, `9e60429cf`); against stock pi, `stats:optchat` is an ordinary status key and shows the bare profile name on the status line.
 
-Tests: 314 in the clone, 313 pass, 1 skipped; `tsc --noEmit` clean.
+Tests: 315 in the clone, 314 pass, 1 skipped; `tsc --noEmit` clean.
 
 ## Benchmark intent
 
