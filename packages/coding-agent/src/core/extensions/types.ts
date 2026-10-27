@@ -165,6 +165,13 @@ export interface ExtensionUIContext {
 	/** Set status text in the footer/status bar. Pass undefined to clear. */
 	setStatus(key: string, text: string | undefined): void;
 
+	/**
+	 * Show a usage figure in place of the session's own context usage in the footer,
+	 * for an extension that manages history itself and measures something else.
+	 * Pass undefined to restore the session's figure.
+	 */
+	setContextUsage(usage: ContextUsage | undefined): void;
+
 	/** Set the working/loading message shown during streaming. Call with no argument to restore default. */
 	setWorkingMessage(message?: string): void;
 

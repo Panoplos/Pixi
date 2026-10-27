@@ -2,6 +2,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
+import type { ContextUsage } from "../../../core/extensions/types.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
 import { type ThemeColor, theme } from "../theme/theme.ts";
 
@@ -54,6 +55,7 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
 export class FooterComponent implements Component {
 	private autoCompactEnabled = true;
 	private rpcSessionId: string | undefined;
+	private contextUsage: ContextUsage | undefined;
 	private session: AgentSession;
 	private footerData: ReadonlyFooterDataProvider;
 
@@ -75,6 +77,10 @@ export class FooterComponent implements Component {
 		this.rpcSessionId = sessionId;
 	}
 
+	/** Show `usage` in place of the session's own context usage; undefined restores it. */
+	setContextUsage(usage: ContextUsage | undefined): void {
+		this.contextUsage = usage;
+	}
 	/**
 	 * No-op: git branch caching now handled by provider.
 	 * Kept for compatibility with existing call sites in interactive-mode.
@@ -108,7 +114,7 @@ export class FooterComponent implements Component {
 
 		// Calculate context usage from session (handles compaction correctly).
 		// After compaction, tokens are unknown until the next LLM response.
-		const contextUsage = this.session.getContextUsage();
+		const contextUsage = this.contextUsage ?? this.session.getContextUsage();
 		const contextWindow = contextUsage?.contextWindow ?? this.session.getEffectiveContextWindow();
 		const contextPercentValue = contextUsage?.percent ?? 0;
 		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";

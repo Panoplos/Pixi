@@ -421,6 +421,12 @@ ctx.ui.setStatus("my-ext", undefined);  // Clear
 // A key starting with "stats:" shows in the stats line (pwd · status · CHR · context) instead of the status line
 ctx.ui.setStatus("stats:my-ext", "profile name");
 
+// Replace the context figure in the stats line, for an extension that manages history itself
+// and measures something else (e.g. a turn tail against its own refresh budget).
+// Percent is coloured cyan below 80 and yellow at or above it; undefined restores the session's figure.
+ctx.ui.setContextUsage({ tokens: 24_000, contextWindow: 78_000, percent: 30.8 });
+ctx.ui.setContextUsage(undefined);
+
 // Working loader (shown during streaming)
 ctx.ui.setWorkingMessage("Thinking deeply...");
 ctx.ui.setWorkingMessage();  // Restore default

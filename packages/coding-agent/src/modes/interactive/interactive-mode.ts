@@ -80,6 +80,7 @@ import { findExtensionStackMatches, recordCrash, takeUnnotifiedCrash } from "../
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "../../core/defaults.ts";
 import type {
 	AutocompleteProviderFactory,
+	ContextUsage,
 	EditorFactory,
 	ExtensionCommandContext,
 	ExtensionContext,
@@ -2376,6 +2377,11 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
+	private setExtensionContextUsage(usage: ContextUsage | undefined): void {
+		this.footer.setContextUsage(usage);
+		this.ui.requestRender();
+	}
+
 	private setEditorWorkingStatusIndicator(indicator: StatusIndicator | undefined): boolean {
 		this.defaultEditor.setWorkingStatusIndicator(undefined);
 		if (!isEmbeddedStatus(this.editor)) return false;
@@ -2610,6 +2616,7 @@ export class InteractiveMode {
 		this.setExtensionHeader(undefined);
 		this.clearExtensionWidgets();
 		this.footerDataProvider.clearExtensionStatuses();
+		this.setExtensionContextUsage(undefined);
 		this.footer.invalidate();
 		this.autocompleteProviderWrappers = [];
 		this.setCustomEditorComponent(undefined);
@@ -2784,6 +2791,7 @@ export class InteractiveMode {
 			notify: (message, type) => this.showExtensionNotify(message, type),
 			onTerminalInput: (handler) => this.addExtensionTerminalInputListener(handler),
 			setStatus: (key, text) => this.setExtensionStatus(key, text),
+			setContextUsage: (usage) => this.setExtensionContextUsage(usage),
 			setWorkingMessage: (message) => {
 				this.workingMessage = message;
 				if (this.activeStatusIndicator?.kind === "working") {

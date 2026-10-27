@@ -167,6 +167,17 @@ describe("FooterComponent width handling", () => {
 		expect(line).toContain("test-model");
 	});
 
+	it("shows the usage an extension reports in place of the session's own", () => {
+		const session = createSession({ sessionName: "" });
+		const footer = new FooterComponent(session, createFooterData(1));
+
+		footer.setContextUsage({ tokens: 31_457, contextWindow: 314_572, percent: 10 });
+		expect(stripAnsi(footer.render(120)[0])).toContain("10.0%/315k");
+
+		footer.setContextUsage(undefined);
+		expect(stripAnsi(footer.render(120)[0])).toContain("12.3%/200k");
+	});
+
 	it("shows the RPC indicator on its own line, right-aligned under the model", () => {
 		const session = createSession({ sessionName: "" });
 		const footer = new FooterComponent(session, createFooterData(1));

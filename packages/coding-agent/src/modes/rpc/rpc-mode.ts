@@ -14,6 +14,7 @@
 import * as crypto from "node:crypto";
 import type { AgentSessionRuntime } from "../../core/agent-session-runtime.ts";
 import type {
+	ContextUsage,
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
 	ExtensionWidgetOptions,
@@ -153,6 +154,10 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				statusKey: key,
 				statusText: text,
 			} as RpcExtensionUIRequest);
+		},
+
+		setContextUsage(_usage: ContextUsage | undefined): void {
+			// No footer in RPC mode
 		},
 
 		setWorkingMessage(_message?: string): void {
