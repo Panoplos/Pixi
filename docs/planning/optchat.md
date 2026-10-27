@@ -4,9 +4,9 @@
 
 Yes, since 2026-10-27: [`Panoplos/pi-optchat`](https://github.com/Panoplos/pi-optchat), forked from upstream [`jonaslsaa/pi-optchat`](https://github.com/jonaslsaa/pi-optchat).
 
-- Branch `local` is our work: one commit on top of upstream `197e17e` (release 0.9.2), the version pi has installed as `npm:pi-optchat` in `~/.pi/agent/settings.json`. The clone at `~/Development/pi-optchat` is on that branch and its sources are identical to the installed copy.
-- Fork `main` is untouched upstream, already at `2714a3f` (release 0.10.0, connected-window handoffs). The patch applies to it cleanly except for a conflict in `README.md`; moving the clone onto 0.10.0 has not been done, because the installed copy would then differ from it.
-- `docs/planning/optchat/local.patch` is the full local diff against upstream `197e17e`, the same change as the `local` commit.
+- Branch `local` is our work: one commit on top of upstream `2714a3f` (release 0.10.0, connected-window handoffs), rebased there 2026-10-27 from the first version on `197e17e` (0.9.2). The clone at `~/Development/pi-optchat` is on that commit, and the copy pi loads from `npm:pi-optchat` (declared in `~/.pi/agent/settings.json`) has the same `src/`. Its `package.json` still says 0.9.2; nothing reads it, and `pixi install` would restore it with the whole dir.
+- Fork `main` is untouched upstream. The rebase needed one resolution: the models table in `README.md`, where 0.10.0 renamed the compactor row to include fallback handoffs.
+- `docs/planning/optchat/local.patch` is the full local diff against upstream `2714a3f`, the same change as the `local` commit.
 - `docs/planning/optchat/optchat-bounded-tail.patch` is the subset meant for an upstream issue: the mid-run refresh changes in `src/transcript.ts` and their tests. The overflow-passthrough hunk in `src/index.ts` is only in `local.patch`.
 
 To rebuild the clone from scratch:
@@ -18,7 +18,7 @@ npm install && npx tsc --noEmit && npm test
 cp src/*.ts ~/.pi/agent/npm/node_modules/pi-optchat/src/
 ```
 
-Without network access to the fork, a plain clone of upstream `197e17e` plus `git apply docs/planning/optchat/local.patch` (run from the pi repo root) gives the same tree.
+Without network access to the fork, a plain clone of upstream `2714a3f` plus `git apply docs/planning/optchat/local.patch` (run from the pi repo root) gives the same tree.
 
 A `pixi install`/npm refresh of the package dir discards the patch. Re-apply it, then check the extension still loads (`pixi --mode rpc --no-session`, expect `choose profile` in the footer's stats line and empty stderr).
 
@@ -29,7 +29,11 @@ A `pixi install`/npm refresh of the package dir discards the patch. Re-apply it,
 3. **The compactor and subagents follow Pi's model.** `compactor`/`subagent` are optional per profile; absent means "use the model Pi is on, at its thinking level". `/optchat model` and `/optchat agents model` list *Pi's model* as the first row to clear a pin. Previously both defaulted to hard-coded Anthropic models (Sonnet 5.5 medium / Opus 5.5 high), which is wrong on any other provider.
 4. **The footer status is the profile name only.** `setStatus('stats:optchat', name)` puts the profile name in pi's stats line (`pwd · name · CHR · context`) in the accent color; `setStatus('optchat', ...)` carries only import notes (`importing`, `import paused`, `import journal invalid`). The message, pending, and agent counts are gone from the footer. This needs pi's `stats:` key support (this repo, `9e60429cf`); against stock pi, `stats:optchat` is an ordinary status key and shows the bare profile name on the status line.
 
-Tests: 315 in the clone, 314 pass, 1 skipped; `tsc --noEmit` clean.
+Tests: 326 in the clone, 325 pass, 1 skipped; `tsc --noEmit` clean.
+
+## What 0.10.0 brings
+
+One feature commit on top of 0.9.2: a connected window's own agent writes its handoff as one more turn in its session, from its prompt cache, instead of the compactor re-reading the transcript with Sonnet. The closing message also tells it what it never saw (undelivered messages, unread subagent reports, stopped subagent ids), and the compactor stays as the fallback when that turn errors, times out, or returns nothing. Nothing here touches `src/transcript.ts`, so the cacheable tail above carries over unchanged.
 
 ## Benchmark intent
 
