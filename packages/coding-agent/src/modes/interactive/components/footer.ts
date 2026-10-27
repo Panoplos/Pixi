@@ -118,6 +118,8 @@ export class FooterComponent implements Component {
 		const contextWindow = contextUsage?.contextWindow ?? this.session.getEffectiveContextWindow();
 		const contextPercentValue = contextUsage?.percent ?? 0;
 		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
+		// A step reads as a whole number against the threshold, `100%/256k summarizing`.
+		const contextFigure = contextUsage?.label ? String(Math.round(contextPercentValue)) : contextPercent;
 
 		// Replace home directory with ~
 		const pwd = formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE);
@@ -148,9 +150,14 @@ export class FooterComponent implements Component {
 		const contextPercentDisplay =
 			contextPercent === "?"
 				? `?/${formatTokens(contextWindow)}`
-				: `${contextPercent}%/${formatTokens(contextWindow)}`;
+				: `${contextFigure}%/${formatTokens(contextWindow)}`;
 		const contextColor: ThemeColor = contextPercentValue >= 80 ? "footerContextWarn" : "footerContextSafe";
-		leftTokens.push(theme.fg(contextColor, contextPercentDisplay));
+		// An extension's step follows the figure in plain text, so the number stays the coloured reading.
+		const contextStep = contextUsage?.label ? sanitizeStatusText(contextUsage.label) : "";
+		leftTokens.push(
+			theme.fg(contextColor, contextPercentDisplay) +
+				(contextStep ? ` ${theme.italic(theme.fg("text", contextStep))}` : ""),
+		);
 
 		if (this.autoCompactEnabled) {
 			leftTokens.push(theme.fg("footerAutoCompact", "(auto)"));

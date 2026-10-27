@@ -425,6 +425,7 @@ ctx.ui.setStatus("stats:my-ext", "profile name");
 // and measures something else (e.g. a turn tail against its own refresh budget).
 // Percent is coloured cyan below 80 and yellow at or above it; undefined restores the session's figure.
 ctx.ui.setContextUsage({ tokens: 24_000, contextWindow: 78_000, percent: 30.8 });
+ctx.ui.setContextUsage({ tokens: 78_000, contextWindow: 78_000, percent: 100, label: "summarizing" }); // `100%/78k summarizing`
 ctx.ui.setContextUsage(undefined);
 
 // Working loader (shown during streaming)

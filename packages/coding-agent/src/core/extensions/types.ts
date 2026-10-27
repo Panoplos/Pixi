@@ -319,6 +319,8 @@ export interface ContextUsage {
 	contextWindow: number;
 	/** Context usage as percentage of context window, or null if tokens is unknown. */
 	percent: number | null;
+	/** A lowercase step to show after the figure, such as what an extension is writing into memory while it works. */
+	label?: string;
 }
 
 export interface CompactOptions {
