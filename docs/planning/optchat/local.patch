@@ -49,7 +49,7 @@ index de86d01..e0237a1 100644
  6. **Profiles**, the **inspector**, the **usage ledger**, **import**, and **connected windows** are additions. Import adds historical-record guidance to the prompts.
  7. **Not done**: computer use and hosting on an always-on machine.
 diff --git a/src/index.ts b/src/index.ts
-index c9caf4e..3dde584 100644
+index c9caf4e..6f42f5f 100644
 --- a/src/index.ts
 +++ b/src/index.ts
 @@ -9,7 +9,7 @@ import { Type } from 'typebox';
@@ -81,13 +81,12 @@ index c9caf4e..3dde584 100644
    };
    // `steered` describes this process's Pi queue, so it is not journaled.
    const saveReports = () => { if (active) atomicWrite(join(active.dir, 'pending-reports.json'), JSON.stringify(reports, (key, value: unknown) => key === 'steered' ? undefined : value)); };
-@@ -230,13 +232,21 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -230,13 +232,20 @@ export default function optchat(pi: ExtensionAPI) {
      let openingMemory: Memory | undefined;
      try {
        const config = loadConfig(dir);
 +      // A role without its own pick follows Pi's model; the profile saves every pick, so this tracks /model and /thinking.
-+      const modelFor = (role: Role): ModelChoice | undefined =>
-+        roleChoice(config, role) ?? (ctx.model && { provider: ctx.model.provider, model: ctx.model.id, thinking: pi.getThinkingLevel() });
++      const modelFor = (role: Role): ModelChoice | undefined => roleChoice(config, role, mainChoice(ctx));
 +      const picked = (role: Role): ModelChoice => {
 +        const choice = modelFor(role);
 +        if (!choice) throw new Error(`No model yet: choose one in Pi (/model), or give ${role === 'compactor' ? 'the compactor' : 'subagents'} their own with /optchat ${role === 'compactor' ? 'model' : 'agents model'}.`);
@@ -104,7 +103,7 @@ index c9caf4e..3dde584 100644
          usage.compression(message, 'compactor', sessionId);
          status(ctx);
        }, () => config.summaryAcceptBytes), warning => ctx.ui.notify(warning, 'error'), undefined, config.jobs);
-@@ -244,9 +254,9 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -244,9 +253,9 @@ export default function optchat(pi: ExtensionAPI) {
        const inbox = new Inbox(dir);
        const recovered = pendingImport(dir) ? 0 : inbox.recover(memory);
        if (recovered) ctx.ui.notify(`Recovered ${recovered} unanswered inputs into ${name}'s memory. Ask to continue them when ready.`, 'info');
@@ -116,7 +115,7 @@ index c9caf4e..3dde584 100644
        const loggedReports = new Set(memory.root.map(e => e.receipt));
        // Reports a crash held back with their unfinished siblings are delivered now, as they are.
        reports = saved.map(s => typeof s === 'string' ? { text: s } : { text: s.text, count: s.count })
-@@ -260,7 +270,8 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -260,7 +269,8 @@ export default function optchat(pi: ExtensionAPI) {
        if (ctx.mode !== 'print' && ctx.mode !== 'json') closeWindows = await serveWindows(dir, children, () => !stopping && !importing && !pendingImport(dir), deliverReport);
        untitle = children.subscribe(() => showTitle(ctx)); showTitle(ctx);
        status(ctx);
@@ -126,7 +125,7 @@ index c9caf4e..3dde584 100644
        const queuedReports = [...reports];
        if (!pendingImport(dir)) {
          const recover = (work: Promise<void>, what: string) => work.catch(error => ctx.ui.notify(`${what}: ${errorText(error)}`, 'error'));
-@@ -421,7 +432,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -421,7 +431,7 @@ export default function optchat(pi: ExtensionAPI) {
      const a = required();
      // Pi's own prompt sections (AGENTS.md files, skills, cwd) stay; the profile's instructions go last.
      syncSearch(a.config);
@@ -135,7 +134,7 @@ index c9caf4e..3dde584 100644
      event.systemPromptOptions.sections.instructions = `${instructions(a.dir)}\n\n${IMPORT_GUIDANCE}`;
      refreshContextFiles(event.systemPromptOptions);
      prompt = event.systemPrompt;
-@@ -489,7 +500,8 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -489,7 +499,8 @@ export default function optchat(pi: ExtensionAPI) {
        const current = ctx.getSystemPrompt();
        if (current.startsWith(MASTER.slice(0, 40))) prompt = current;
        // A turn past its budget moves its steps into the view, keeping the task and the last tool call whole (#146).
@@ -145,7 +144,7 @@ index c9caf4e..3dde584 100644
        if (refresh) {
          const { cut, size } = refresh, began = Date.now();
          ctx.ui.setWorkingMessage(`OptChat: moving this turn's ${Math.round(size / 4000)}k tokens into memory…`);
-@@ -498,7 +510,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -498,7 +509,7 @@ export default function optchat(pi: ExtensionAPI) {
          ctx.ui.notify(`OptChat moved ${Math.round(size / 4000)}k tokens of this turn into memory (${((Date.now() - began) / 1000).toFixed(1)}s).`, 'info');
        }
        // Built on every call, unlike the view, so it is never out of date; it goes last, after everything cached.
@@ -154,7 +153,7 @@ index c9caf4e..3dde584 100644
      } catch (error) {
        // Pi catches extension errors. Explicitly abort so it cannot fall back to old context.
        ctx.abort();
-@@ -509,8 +521,12 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -509,8 +520,12 @@ export default function optchat(pi: ExtensionAPI) {
    });
    pi.on('before_provider_request', (event, ctx) => ctx.model?.api === 'anthropic-messages' ? cachePayload(event.payload) : event.payload);
    pi.on('cache_warming_decision', () => ({ action: 'stop' }));
@@ -169,7 +168,7 @@ index c9caf4e..3dde584 100644
      return { cancel: true };
    });
    const collectUsage = (ctx: ExtensionContext) => {
-@@ -593,7 +609,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -593,7 +608,7 @@ export default function optchat(pi: ExtensionAPI) {
      if (!action) {
        const a = active;
        action = await showMenu(ctx, brand, a && { profile: a.name, messages: a.memory.root.length, pending: a.memory.pending,
@@ -178,22 +177,22 @@ index c9caf4e..3dde584 100644
      }
      if (action === 'import') {
        const a = required();
-@@ -612,7 +628,8 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -612,7 +627,8 @@ export default function optchat(pi: ExtensionAPI) {
            }
            if (selected !== 'Resume import') return;
          } else {
 -          const plan = await chooseImport(ctx, a.name, a.memory, `${a.config.compactor.provider}/${a.config.compactor.model} (${a.config.compactor.thinking})`, signal);
-+          const importModel = roleChoice(a.config, 'compactor');
++          const importModel = roleChoice(a.config, 'compactor', mainChoice(ctx));
 +          const plan = await chooseImport(ctx, a.name, a.memory, importModel ? `${importModel.provider}/${importModel.model} (${importModel.thinking})` : 'Pi\'s model', signal);
            if (!plan) return;
            signal.throwIfAborted();
            flush(); a.inbox.recover(a.memory); await checkpoints; await a.memory.close(); closed = true;
-@@ -621,7 +638,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -621,7 +637,7 @@ export default function optchat(pi: ExtensionAPI) {
            if (!job) return;
          }
          if (!closed) { await a.memory.close(); closed = true; }
 -        const compress = createCompressor(ctx.modelRegistry, () => a.config.compactor, message => {
-+        const compress = createCompressor(ctx.modelRegistry, () => { const choice = roleChoice(a.config, 'compactor'); if (!choice) throw new Error('No model yet: choose one in Pi (/model) or with /optchat model.'); return choice; }, message => {
++        const compress = createCompressor(ctx.modelRegistry, () => { const choice = roleChoice(a.config, 'compactor', mainChoice(ctx)); if (!choice) throw new Error('No model yet: choose one in Pi (/model) or with /optchat model.'); return choice; }, message => {
            a.usage.compression(message, 'import', ctx.sessionManager.getSessionId());
          }, () => a.config.summaryAcceptBytes);
          const completed = await showProgress(ctx, job, (signal, progress) => runImport(a.dir, compress, signal, a.config.jobs, progress), signal);
@@ -211,7 +210,7 @@ index b48539b..79ae127 100644
  export const statusRows = (s: MenuStatus) => [
    ['Memory', `${count(s.messages)} messages · ${count(s.pending)} pending`],
 diff --git a/src/profiles.ts b/src/profiles.ts
-index 7ea6c43..d93d50e 100644
+index 7ea6c43..bc807bf 100644
 --- a/src/profiles.ts
 +++ b/src/profiles.ts
 @@ -12,13 +12,15 @@ export const isWindows = process.platform === 'win32';
@@ -230,8 +229,8 @@ index 7ea6c43..d93d50e 100644
 +export interface ProfileConfig extends Settings { compactor?: ModelChoice; subagent?: ModelChoice; main?: ModelChoice }
 +/** Roles whose own pick overrides following Pi's model. */
 +export type Role = 'compactor' | 'subagent';
-+/** What a role runs on: its own pick, else the model Pi is on (as last saved while this profile was open). */
-+export const roleChoice = (config: ProfileConfig, role: Role) => config[role] ?? config.main;
++/** What a role runs on: its own pick, else the model saved from Pi (`main`), else the model Pi is on now, which a profile that has not saved one yet passes in. */
++export const roleChoice = (config: ProfileConfig, role: Role, pi?: ModelChoice) => config[role] ?? config.main ?? pi;
 +/** Victor's models, sent only when the user pins them; the defaults follow Pi instead. */
 +export const defaults: ProfileConfig = { ...DEFAULT_SETTINGS };
  export const THINKING = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
@@ -483,7 +482,7 @@ index 0000000..8681e71
 +  assert.deepEqual(notices, [], 'no notice: the turn continues');
 +});
 diff --git a/test/main-model.test.ts b/test/main-model.test.ts
-index 15abf0f..260987d 100644
+index 15abf0f..4a41fb3 100644
 --- a/test/main-model.test.ts
 +++ b/test/main-model.test.ts
 @@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
@@ -496,14 +495,14 @@ index 15abf0f..260987d 100644
  import optchat from '../src/index.ts';
 -import { createProfile, loadConfig, profilePath, saveConfig } from '../src/profiles.ts';
 -import type { ModelChoice } from '../src/compactor.ts';
-+import { createProfile, loadConfig, profilePath, roleChoice, saveConfig } from '../src/profiles.ts';
++import { createProfile, defaults, loadConfig, profilePath, roleChoice, saveConfig } from '../src/profiles.ts';
 +import { createCompressor, type ModelChoice } from '../src/compactor.ts';
 +import { COMPACT } from '../src/prompts.ts';
 +import { emptyUsage } from '../src/usage.ts';
  import { removeDir } from './support.ts';
  
  const model = (id: string, reasoning: boolean) =>
-@@ -77,3 +80,66 @@ test('the main model and thinking level follow the profile', async () => {
+@@ -77,3 +80,77 @@ test('the main model and thinking level follow the profile', async () => {
      removeDir(dir);
    }
  });
@@ -569,6 +568,17 @@ index 15abf0f..260987d 100644
 +    if (oldHome === undefined) delete process.env.OPTCHAT_HOME; else process.env.OPTCHAT_HOME = oldHome;
 +    removeDir(dir);
 +  }
++});
++
++test('a role with no saved pick follows the model Pi is on now', () => {
++  // What the import dialog and its compactor ask for: a profile whose config.json has no compactor, subagent or main yet
++  // (picks are only saved once one is made in Pi) still compresses on Pi's model instead of refusing.
++  const pi: ModelChoice = { provider: 'fixture', model: 'plain', thinking: 'off' };
++  assert.deepEqual(roleChoice(defaults, 'compactor', pi), pi);
++  const main: ModelChoice = { provider: 'fixture', model: 'deep', thinking: 'low' };
++  assert.deepEqual(roleChoice({ ...defaults, main }, 'compactor', pi), main, 'the pick saved at the last /model wins over the model Pi is on now');
++  const pinned: ModelChoice = { provider: 'fixture', model: 'pinned', thinking: 'high' };
++  assert.deepEqual(roleChoice({ ...defaults, main, compactor: pinned }, 'compactor', pi), pinned, 'and the compactor\'s own pick wins over both');
 +});
 diff --git a/test/menu.test.ts b/test/menu.test.ts
 index 0de7a2a..e562604 100644
