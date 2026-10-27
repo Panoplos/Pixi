@@ -69,7 +69,7 @@ RPC commands can change models, inspect state, manage sessions, run shell comman
 
 Extension dialogs form a request-response subprotocol. Other extension UI updates are notifications that a client may display or ignore. TUI-only extension capabilities are unavailable or degraded outside interactive mode.
 
-For Node.js or TypeScript integrations, prefer `RpcClient` from `@earendil-works/pi-coding-agent`. It starts a Pi RPC child process, correlates requests, exposes typed command methods, and delivers session events to listeners.
+For Node.js or TypeScript integrations, prefer `RpcClient` from `@earendil-works/pi-coding-agent`. It starts a Pi RPC child process, correlates requests, exposes typed command methods, and delivers session events to listeners. `connectRpcClient()` uses the same client against a session that is already running in the terminal.
 
 The [RPC client example](../examples/rpc-client.ts) sends one prompt, streams text and tool activity, waits for `agent_settled`, and shuts down the child process. It is included in the repository’s TypeScript checks.
 
@@ -78,6 +78,8 @@ The [RPC client example](../examples/rpc-client.ts) sends one prompt, streams te
 The client requires a path to a runnable Pi CLI. The repository example points at `dist/cli.js`, so the package must be built before that example runs from a checkout.
 
 If you are building a client without `RpcClient`, start with [RPC Protocol](rpc.md), then use [RPC Commands](rpc-commands.md) and [JSON Event Stream](json.md) as the wire references.
+
+A session already running in the terminal also serves these commands on a local socket, which is the way to reach a session a person is using: see [Drive a running interactive session](rpc.md#drive-a-running-interactive-session).
 
 ## Fork and rebrand Pi
 

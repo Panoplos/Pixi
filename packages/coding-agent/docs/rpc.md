@@ -19,6 +19,59 @@ Normal CLI options still select the working folder, model, tools, resources, and
 
 RPC mode rejects `@file` prompt arguments. Send prompts through the [`prompt`](rpc-commands.md#prompt) command instead.
 
+## Drive a running interactive session
+
+An interactive session serves the same commands on a local socket, so another
+program can prompt or inspect it while the TUI stays the interface. Nothing about
+the protocol changes: the same commands, responses, and events, one JSON record
+per line.
+
+```bash
+ls ~/.pi/agent/rpc/            # one socket per running session, named after its session id
+{ echo '{"id":"1","type":"prompt","message":"run the tests"}'; sleep 1; } | nc -U ~/.pi/agent/rpc/<id>.sock
+```
+
+While a session is serving, its footer shows `rpc <session id>` under the model line.
+
+`listRpcEndpoints()` returns those sessions newest first, and `findRpcSocket()` accepts
+a socket path, a session id or unique id prefix, or nothing to pick the newest session
+that still answers. A socket file left behind by a crashed session is skipped.
+
+Keep the connection open until you have the records you need. A client that closes as
+soon as it has written its commands, such as `nc` at end of input, is gone before
+slow commands answer.
+
+The socket belongs to the user account and the directory is mode `0700`, so
+another user cannot connect. Commands run through the same code as RPC mode and
+the TUI picks up the result as usual. Extension dialogs stay in the terminal,
+because this session still has one.
+
+Every connected client receives the event stream. Responses go back only to the
+client whose command produced them, so a listener can subscribe to events without
+interfering with a client that sends commands. A client disconnecting leaves the
+session running.
+
+In TypeScript, `connectRpcClient()` returns the same `RpcClient` RPC mode uses, with
+every typed method and the event listeners, so a program does not care whether the
+session it drives is a child process or a terminal someone is sitting in:
+
+```ts
+import { connectRpcClient } from "@earendil-works/pi-coding-agent";
+
+const client = await connectRpcClient(); // newest running session; or pass an id, prefix, or path
+console.log(await client.getState());
+await client.prompt("run the tests");
+const events = await client.collectEvents();
+await client.stop(); // closes the connection; the session keeps running
+```
+
+The socket starts with the session and is removed on exit. Pass `--no-rpc` to
+disable it. Windows has no socket files, so the endpoint is a named pipe,
+`\\.\pipe\<app>-rpc-<session id>`.
+
+Unlike RPC mode, a session that is serving a socket keeps its terminal. Use RPC
+mode when the caller should own the process, its stdin, and its stdout.
+
 ## Protocol records
 
 The protocol has four record families:

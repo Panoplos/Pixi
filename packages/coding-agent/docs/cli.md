@@ -195,6 +195,8 @@ See [Configuration](configuration.md) for conventional directories and project t
   Loads an extension file or directory, or a built-in extension such as `builtin:mcp`, and is repeatable.
 - `-ne`, `--no-extensions`<br>
   Disables discovered, configured, and built-in extensions. Explicit `-e` paths still load, so `pi -ne -e builtin:mcp` keeps only the built-in MCP support.
+- `--no-rpc`<br>
+  Do not serve [RPC](rpc.md#drive-a-running-interactive-session) commands on this session's socket. The socket is served by default in interactive mode and never in the other modes.
 - `--no-mcp`<br>
   Disables the built-in MCP support for this run: no servers connect, and there are no MCP tools or `/mcp`. It does not affect an extension that replaces the built-in MCP support.
 - `--skill <path>`<br>

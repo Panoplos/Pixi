@@ -1,10 +1,13 @@
 /**
  * RPC Client for programmatic access to the coding agent.
  *
- * Spawns the agent in RPC mode and provides a typed API for all operations.
+ * Either spawns the agent in RPC mode or connects to a session already serving RPC
+ * on its socket, and provides a typed API for all operations either way.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
+import * as net from "node:net";
+import type { Writable } from "node:stream";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { PromptDisposition, QueuedInputDisposition, SessionStats } from "../../core/agent-session.ts";
@@ -12,6 +15,7 @@ import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { SessionEntry, SessionTreeNode } from "../../core/session-manager.ts";
 import type { JsonAgentSessionEvent } from "../json-event.ts";
+import { findRpcSocket } from "./discovery.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.ts";
 import type { RpcCommand, RpcResponse, RpcSessionState, RpcSlashCommand } from "./rpc-types.ts";
 
@@ -26,6 +30,8 @@ type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : n
 type RpcCommandBody = DistributiveOmit<RpcCommand, "id">;
 
 export interface RpcClientOptions {
+	/** Connect to a running session's socket instead of spawning a process. */
+	socketPath?: string;
 	/** Path to the CLI entry point (default: searches for dist/cli.js) */
 	cliPath?: string;
 	/** Working directory for the agent */
@@ -53,8 +59,10 @@ export type RpcEventListener = (event: JsonAgentSessionEvent) => void;
 // RPC Client
 // ============================================================================
 
+type Transport = { kind: "process"; process: ChildProcess } | { kind: "socket"; socket: net.Socket };
+
 export class RpcClient {
-	private process: ChildProcess | null = null;
+	private transport: Transport | null = null;
 	private stopReadingStdout: (() => void) | null = null;
 	private eventListeners: RpcEventListener[] = [];
 	private pendingRequests: Map<string, { resolve: (response: RpcResponse) => void; reject: (error: Error) => void }> =
@@ -69,14 +77,19 @@ export class RpcClient {
 	}
 
 	/**
-	 * Start the RPC agent process.
+	 * Start the client: spawn the RPC agent, or connect to a session's socket.
 	 */
 	async start(): Promise<void> {
-		if (this.process) {
+		if (this.transport) {
 			throw new Error("Client already started");
 		}
 
 		this.exitError = null;
+
+		if (this.options.socketPath) {
+			await this.connectSocket(this.options.socketPath);
+			return;
+		}
 
 		const cliPath = this.options.cliPath ?? "dist/cli.js";
 		const args = ["--mode", "rpc"];
@@ -96,7 +109,7 @@ export class RpcClient {
 			env: { ...process.env, ...this.options.env },
 			stdio: ["pipe", "pipe", "pipe"],
 		});
-		this.process = childProcess;
+		this.transport = { kind: "process", process: childProcess };
 
 		// Collect stderr for debugging
 		childProcess.stderr?.on("data", (data) => {
@@ -105,23 +118,16 @@ export class RpcClient {
 		});
 
 		childProcess.once("exit", (code, signal) => {
-			if (this.process !== childProcess) return;
-			const error = this.createProcessExitError(code, signal);
-			this.exitError = error;
-			this.rejectPendingRequests(error);
+			if (!this.ownsChild(childProcess)) return;
+			this.fail(this.createProcessExitError(code, signal));
 		});
 		childProcess.once("error", (error) => {
-			if (this.process !== childProcess) return;
-			const processError = new Error(`Agent process error: ${error.message}. Stderr: ${this.stderr}`);
-			this.exitError = processError;
-			this.rejectPendingRequests(processError);
+			if (!this.ownsChild(childProcess)) return;
+			this.fail(new Error(`Agent process error: ${error.message}. Stderr: ${this.stderr}`));
 		});
 		childProcess.stdin?.on("error", (error) => {
-			if (this.process !== childProcess) return;
-			const stdinError =
-				this.exitError ?? new Error(`Agent process stdin error: ${error.message}. Stderr: ${this.stderr}`);
-			this.exitError = stdinError;
-			this.rejectPendingRequests(stdinError);
+			if (!this.ownsChild(childProcess)) return;
+			this.fail(this.exitError ?? new Error(`Agent process stdin error: ${error.message}. Stderr: ${this.stderr}`));
 		});
 
 		// Set up strict JSONL reader for stdout.
@@ -132,37 +138,77 @@ export class RpcClient {
 		// Wait a moment for process to initialize
 		await new Promise((resolve) => setTimeout(resolve, 100));
 
-		if (this.process.exitCode !== null) {
-			const error = this.exitError ?? this.createProcessExitError(this.process.exitCode, this.process.signalCode);
-			this.exitError = error;
+		if (childProcess.exitCode !== null) {
+			const error = this.exitError ?? this.createProcessExitError(childProcess.exitCode, childProcess.signalCode);
+			this.fail(error);
 			throw error;
 		}
 	}
 
 	/**
-	 * Stop the RPC agent process.
+	 * Attach to a session that is serving RPC on its socket.
+	 *
+	 * Closing the client closes the connection; the session keeps running.
+	 */
+	private async connectSocket(path: string): Promise<void> {
+		const socket = net.connect(path);
+		await new Promise<void>((resolve, reject) => {
+			const onError = (error: Error) => {
+				socket.destroy();
+				reject(new Error(`Cannot connect to ${path}: ${error.message}`));
+			};
+			socket.once("connect", () => {
+				socket.off("error", onError);
+				resolve();
+			});
+			socket.once("error", onError);
+		});
+
+		this.transport = { kind: "socket", socket };
+		this.stopReadingStdout = attachJsonlLineReader(socket, (line) => {
+			this.handleLine(line);
+		});
+		socket.on("error", (error) => {
+			if (!this.ownsSocket(socket)) return;
+			this.fail(new Error(`RPC socket error: ${error.message}`));
+		});
+		socket.once("close", () => {
+			if (!this.ownsSocket(socket)) return;
+			this.fail(new Error(`RPC socket closed: ${path}`));
+		});
+	}
+
+	/**
+	 * Stop the client: kill the spawned agent, or close the socket connection.
 	 */
 	async stop(): Promise<void> {
-		if (!this.process) return;
+		const transport = this.transport;
+		if (!transport) return;
 
 		this.stopReadingStdout?.();
 		this.stopReadingStdout = null;
-		this.process.kill("SIGTERM");
+		this.transport = null;
 
-		// Wait for process to exit
-		await new Promise<void>((resolve) => {
-			const timeout = setTimeout(() => {
-				this.process?.kill("SIGKILL");
-				resolve();
-			}, 1000);
+		if (transport.kind === "socket") {
+			transport.socket.destroy();
+		} else {
+			const childProcess = transport.process;
+			childProcess.kill("SIGTERM");
 
-			this.process?.on("exit", () => {
-				clearTimeout(timeout);
-				resolve();
+			// Wait for process to exit
+			await new Promise<void>((resolve) => {
+				const timeout = setTimeout(() => {
+					childProcess.kill("SIGKILL");
+					resolve();
+				}, 1000);
+
+				childProcess.on("exit", () => {
+					clearTimeout(timeout);
+					resolve();
+				});
 			});
-		});
+		}
 
-		this.process = null;
 		this.pendingRequests.clear();
 	}
 
@@ -546,6 +592,25 @@ export class RpcClient {
 		return new Error(`Agent process exited (code=${code} signal=${signal}). Stderr: ${this.stderr}`);
 	}
 
+	private writer(): Writable | null {
+		if (this.transport?.kind === "socket") return this.transport.socket;
+		return this.transport?.kind === "process" ? (this.transport.process.stdin ?? null) : null;
+	}
+
+	private ownsChild(childProcess: ChildProcess): boolean {
+		return this.transport?.kind === "process" && this.transport.process === childProcess;
+	}
+
+	private ownsSocket(socket: net.Socket): boolean {
+		return this.transport?.kind === "socket" && this.transport.socket === socket;
+	}
+
+	/** Record the connection error and fail everything waiting on it. */
+	private fail(error: Error): void {
+		this.exitError = error;
+		this.rejectPendingRequests(error);
+	}
+
 	private rejectPendingRequests(error: Error): void {
 		for (const pending of this.pendingRequests.values()) {
 			pending.reject(error);
@@ -554,22 +619,22 @@ export class RpcClient {
 	}
 
 	private async send(command: RpcCommandBody): Promise<RpcResponse> {
-		const childProcess = this.process;
-		const stdin = childProcess?.stdin;
-		if (!childProcess || !stdin) {
+		const transport = this.transport;
+		const writer = this.writer();
+		if (!transport || !writer) {
 			throw new Error("Client not started");
 		}
 		if (this.exitError) {
 			throw this.exitError;
 		}
-		if (childProcess.exitCode !== null) {
-			const error = this.createProcessExitError(childProcess.exitCode, childProcess.signalCode);
-			this.exitError = error;
+		if (transport.kind === "process" && transport.process.exitCode !== null) {
+			const error = this.createProcessExitError(transport.process.exitCode, transport.process.signalCode);
+			this.fail(error);
 			throw error;
 		}
-		if (stdin.destroyed || !stdin.writable) {
-			const error = new Error(`Agent process stdin is not writable. Stderr: ${this.stderr}`);
-			this.exitError = error;
+		if (writer.destroyed || !writer.writable) {
+			const error = new Error(`RPC connection is not writable. Stderr: ${this.stderr}`);
+			this.fail(error);
 			throw error;
 		}
 
@@ -594,7 +659,7 @@ export class RpcClient {
 			});
 
 			try {
-				stdin.write(serializeJsonLine(fullCommand));
+				writer.write(serializeJsonLine(fullCommand));
 			} catch (error: unknown) {
 				const writeError = error instanceof Error ? error : new Error(String(error));
 				const pending = this.pendingRequests.get(id);
@@ -614,4 +679,17 @@ export class RpcClient {
 		const successResponse = response as Extract<RpcResponse, { success: true; data: unknown }>;
 		return successResponse.data as T;
 	}
+}
+
+/**
+ * Connect to a session that is already serving RPC on its socket.
+ *
+ * Accepts the socket path, a session id or unique id prefix, or nothing to pick the
+ * newest session that still answers. The session keeps running when the client
+ * stops; only the connection closes.
+ */
+export async function connectRpcClient(target?: string): Promise<RpcClient> {
+	const client = new RpcClient({ socketPath: await findRpcSocket(target) });
+	await client.start();
+	return client;
 }

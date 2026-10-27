@@ -417,19 +417,24 @@ export { createToolSearchExtension } from "./extensions/tool-search/index.ts";
 export { type MainOptions, main } from "./main.ts";
 // Run modes for programmatic SDK usage
 export {
+	connectRpcClient,
+	findRpcSocket,
 	InteractiveMode,
 	type InteractiveModeOptions,
 	type JsonAgentSessionEvent,
+	listRpcEndpoints,
 	type ModelInfo,
 	type PrintModeOptions,
 	RpcClient,
 	type RpcClientOptions,
 	type RpcCommand,
+	type RpcEndpoint,
 	type RpcEventListener,
 	type RpcExtensionUIRequest,
 	type RpcExtensionUIResponse,
 	type RpcResponse,
 	type RpcSessionState,
+	rpcSocketPath,
 	runPrintMode,
 	runRpcMode,
 } from "./modes/index.ts";

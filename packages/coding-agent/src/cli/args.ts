@@ -36,6 +36,7 @@ export interface Args {
 	extensions?: string[];
 	noExtensions?: boolean;
 	noMcp?: boolean;
+	noRpc?: boolean;
 	print?: boolean;
 	export?: string;
 	noSkills?: boolean;
@@ -190,6 +191,8 @@ export function parseArgs(args: string[]): Args {
 			result.noExtensions = true;
 		} else if (arg === "--no-mcp") {
 			result.noMcp = true;
+		} else if (arg === "--no-rpc") {
+			result.noRpc = true;
 		} else if (arg === "--skill" && i + 1 < args.length) {
 			result.skills = result.skills ?? [];
 			result.skills.push(args[++i]);
@@ -326,6 +329,7 @@ ${chalk.bold("Options:")}
   --extension, -e <path>         Load an extension file or builtin:<name> (can be used multiple times)
   --no-extensions, -ne           Disable extension discovery and built-in extensions (explicit -e paths still work)
   --no-mcp                       Disable built-in MCP support: no servers connect and no MCP tools
+  --no-rpc                       Do not serve RPC commands on this session's socket
   --skill <path>                 Load a skill file or directory (can be used multiple times)
   --no-skills, -ns               Disable skills discovery and loading
   --prompt-template <path>       Load a prompt template file or directory (can be used multiple times)
