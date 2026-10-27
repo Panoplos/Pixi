@@ -1,5 +1,5 @@
 diff --git a/README.md b/README.md
-index 52e796f..2462f9b 100644
+index 52e796f..95c5a12 100644
 --- a/README.md
 +++ b/README.md
 @@ -76,10 +76,10 @@ Details, errors and join rules: [docs/connected-windows.md](docs/connected-windo
@@ -12,7 +12,7 @@ index 52e796f..2462f9b 100644
 +| Compactor (summaries, imports, fallback handoffs) | Pi's model, at its thinking level | `/optchat model` |
  
 -All three are saved per profile. The main agent's model and thinking level are saved whenever you change them in Pi and picked again when the profile opens, unless the saved model is no longer available. This includes resumed sessions: the profile's pick replaces the one the session last used. On Pi's command line, `--model` (or `--provider`) keeps that model, `--thinking` that level, and `--models` keeps a saved model only if it is in that list. Subagent and compactor settings do not follow the main model. If you use other providers, change them before chatting. Authentication uses Pi's existing provider login.
-+All three are saved per profile. The main agent's model and thinking level are saved whenever you change them in Pi and picked again when the profile opens, unless the saved model is no longer available. This includes resumed sessions: the profile's pick replaces the one the session last used. On Pi's command line, `--model` (or `--provider`) keeps that model, `--thinking` that level, and `--models` keeps a saved model only if it is in that list. Subagents and the compactor follow the main model until you pick one for them with `/optchat agents model` or `/optchat model`; picking one pins it to that profile, and the first row of the picker (Pi's model) lets them follow again. If you use other providers, change them before chatting. Authentication uses Pi's existing provider login.
++All three are saved per profile. The main agent's model and thinking level are saved when you first open the profile and whenever you change them in Pi, then picked again when the profile opens, unless the saved model is no longer available. This includes resumed sessions: the profile's pick replaces the one the session last used. On Pi's command line, `--model` (or `--provider`) keeps that model, `--thinking` that level, and `--models` keeps a saved model only if it is in that list. Subagents and the compactor follow the main model until you pick one for them with `/optchat agents model` or `/optchat model`; picking one pins it to that profile, and the first row of the picker (Pi's model) lets them follow again. If you use other providers, change them before chatting. Authentication uses Pi's existing provider login.
  
  Compression and subagents make extra model requests with your provider credentials.
  
@@ -49,7 +49,7 @@ index de86d01..e0237a1 100644
  6. **Profiles**, the **inspector**, the **usage ledger**, **import**, and **connected windows** are additions. Import adds historical-record guidance to the prompts.
  7. **Not done**: computer use and hosting on an always-on machine.
 diff --git a/src/index.ts b/src/index.ts
-index c9caf4e..6f42f5f 100644
+index c9caf4e..546c364 100644
 --- a/src/index.ts
 +++ b/src/index.ts
 @@ -9,7 +9,7 @@ import { Type } from 'typebox';
@@ -61,7 +61,25 @@ index c9caf4e..6f42f5f 100644
  import { allowSearch, CONTINUITY, IMPORT_GUIDANCE, MASTER, modelsHint, SEARCH_DOC, TURN_REFRESHED, VIEW_DOC } from './prompts.ts';
  import { cachePayload, record } from './cache.ts';
  import { saveImages } from './images.ts';
-@@ -150,12 +150,14 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -132,9 +132,15 @@ export default function optchat(pi: ExtensionAPI) {
+   };
+   pi.on('model_select', (_event, ctx) => rememberMain(ctx));
+   pi.on('thinking_level_select', (_event, ctx) => rememberMain(ctx));
+-  const restoreMain = async (ctx: ExtensionContext, { name, config: { main } }: Active) => {
++  const restoreMain = async (ctx: ExtensionContext, active: Active) => {
++    const { name, config: { main } } = active;
+     restored = undefined;
+-    if (!main || pinnedModel || launch.models && !ctx.scopedModels.some(({ model }) => model.provider === main.provider && model.id === main.model)) return;
++    if (!main) {
++      // A profile written before the main model followed Pi has no pick to restore. Record where Pi is, so it stops following Pi from the next open on.
++      if (!pinnedModel) rememberMain(ctx);
++      return;
++    }
++    if (pinnedModel || launch.models && !ctx.scopedModels.some(({ model }) => model.provider === main.provider && model.id === main.model)) return;
+     const model = ctx.modelRegistry.find(main.provider, main.model), thinking = launch.thinking ?? main.thinking;
+     restoring = true;
+     try {
+@@ -150,12 +156,14 @@ export default function optchat(pi: ExtensionAPI) {
    const required = () => { if (!active) throw new Error('Choose an OptChat profile first: /optchat profile'); return active; };
    const status = (ctx: ExtensionContext) => {
      const a = active;
@@ -81,7 +99,7 @@ index c9caf4e..6f42f5f 100644
    };
    // `steered` describes this process's Pi queue, so it is not journaled.
    const saveReports = () => { if (active) atomicWrite(join(active.dir, 'pending-reports.json'), JSON.stringify(reports, (key, value: unknown) => key === 'steered' ? undefined : value)); };
-@@ -230,13 +232,20 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -230,13 +238,20 @@ export default function optchat(pi: ExtensionAPI) {
      let openingMemory: Memory | undefined;
      try {
        const config = loadConfig(dir);
@@ -103,7 +121,7 @@ index c9caf4e..6f42f5f 100644
          usage.compression(message, 'compactor', sessionId);
          status(ctx);
        }, () => config.summaryAcceptBytes), warning => ctx.ui.notify(warning, 'error'), undefined, config.jobs);
-@@ -244,9 +253,9 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -244,9 +259,9 @@ export default function optchat(pi: ExtensionAPI) {
        const inbox = new Inbox(dir);
        const recovered = pendingImport(dir) ? 0 : inbox.recover(memory);
        if (recovered) ctx.ui.notify(`Recovered ${recovered} unanswered inputs into ${name}'s memory. Ask to continue them when ready.`, 'info');
@@ -115,7 +133,7 @@ index c9caf4e..6f42f5f 100644
        const loggedReports = new Set(memory.root.map(e => e.receipt));
        // Reports a crash held back with their unfinished siblings are delivered now, as they are.
        reports = saved.map(s => typeof s === 'string' ? { text: s } : { text: s.text, count: s.count })
-@@ -260,7 +269,8 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -260,7 +275,8 @@ export default function optchat(pi: ExtensionAPI) {
        if (ctx.mode !== 'print' && ctx.mode !== 'json') closeWindows = await serveWindows(dir, children, () => !stopping && !importing && !pendingImport(dir), deliverReport);
        untitle = children.subscribe(() => showTitle(ctx)); showTitle(ctx);
        status(ctx);
@@ -125,7 +143,7 @@ index c9caf4e..6f42f5f 100644
        const queuedReports = [...reports];
        if (!pendingImport(dir)) {
          const recover = (work: Promise<void>, what: string) => work.catch(error => ctx.ui.notify(`${what}: ${errorText(error)}`, 'error'));
-@@ -421,7 +431,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -421,7 +437,7 @@ export default function optchat(pi: ExtensionAPI) {
      const a = required();
      // Pi's own prompt sections (AGENTS.md files, skills, cwd) stay; the profile's instructions go last.
      syncSearch(a.config);
@@ -134,7 +152,7 @@ index c9caf4e..6f42f5f 100644
      event.systemPromptOptions.sections.instructions = `${instructions(a.dir)}\n\n${IMPORT_GUIDANCE}`;
      refreshContextFiles(event.systemPromptOptions);
      prompt = event.systemPrompt;
-@@ -489,7 +499,8 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -489,7 +505,8 @@ export default function optchat(pi: ExtensionAPI) {
        const current = ctx.getSystemPrompt();
        if (current.startsWith(MASTER.slice(0, 40))) prompt = current;
        // A turn past its budget moves its steps into the view, keeping the task and the last tool call whole (#146).
@@ -144,7 +162,7 @@ index c9caf4e..6f42f5f 100644
        if (refresh) {
          const { cut, size } = refresh, began = Date.now();
          ctx.ui.setWorkingMessage(`OptChat: moving this turn's ${Math.round(size / 4000)}k tokens into memory…`);
-@@ -498,7 +509,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -498,7 +515,7 @@ export default function optchat(pi: ExtensionAPI) {
          ctx.ui.notify(`OptChat moved ${Math.round(size / 4000)}k tokens of this turn into memory (${((Date.now() - began) / 1000).toFixed(1)}s).`, 'info');
        }
        // Built on every call, unlike the view, so it is never out of date; it goes last, after everything cached.
@@ -153,7 +171,7 @@ index c9caf4e..6f42f5f 100644
      } catch (error) {
        // Pi catches extension errors. Explicitly abort so it cannot fall back to old context.
        ctx.abort();
-@@ -509,8 +520,12 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -509,8 +526,12 @@ export default function optchat(pi: ExtensionAPI) {
    });
    pi.on('before_provider_request', (event, ctx) => ctx.model?.api === 'anthropic-messages' ? cachePayload(event.payload) : event.payload);
    pi.on('cache_warming_decision', () => ({ action: 'stop' }));
@@ -168,7 +186,7 @@ index c9caf4e..6f42f5f 100644
      return { cancel: true };
    });
    const collectUsage = (ctx: ExtensionContext) => {
-@@ -593,7 +608,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -593,7 +614,7 @@ export default function optchat(pi: ExtensionAPI) {
      if (!action) {
        const a = active;
        action = await showMenu(ctx, brand, a && { profile: a.name, messages: a.memory.root.length, pending: a.memory.pending,
@@ -177,7 +195,7 @@ index c9caf4e..6f42f5f 100644
      }
      if (action === 'import') {
        const a = required();
-@@ -612,7 +627,8 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -612,7 +633,8 @@ export default function optchat(pi: ExtensionAPI) {
            }
            if (selected !== 'Resume import') return;
          } else {
@@ -187,7 +205,7 @@ index c9caf4e..6f42f5f 100644
            if (!plan) return;
            signal.throwIfAborted();
            flush(); a.inbox.recover(a.memory); await checkpoints; await a.memory.close(); closed = true;
-@@ -621,7 +637,7 @@ export default function optchat(pi: ExtensionAPI) {
+@@ -621,7 +643,7 @@ export default function optchat(pi: ExtensionAPI) {
            if (!job) return;
          }
          if (!closed) { await a.memory.close(); closed = true; }
@@ -210,7 +228,7 @@ index b48539b..79ae127 100644
  export const statusRows = (s: MenuStatus) => [
    ['Memory', `${count(s.messages)} messages · ${count(s.pending)} pending`],
 diff --git a/src/profiles.ts b/src/profiles.ts
-index 7ea6c43..bc807bf 100644
+index 7ea6c43..6c6f926 100644
 --- a/src/profiles.ts
 +++ b/src/profiles.ts
 @@ -12,13 +12,15 @@ export const isWindows = process.platform === 'win32';
@@ -224,7 +242,7 @@ index 7ea6c43..bc807bf 100644
 -  subagent: { provider: 'anthropic', model: 'claude-opus-5-5', thinking: 'high' },
 -  ...DEFAULT_SETTINGS,
 -};
-+/** `main` is the last model and thinking level picked in Pi while this profile was open; absent until one is picked.
++/** `main` is the last model and thinking level picked in Pi while this profile was open, recorded on the first open too.
 + * A role without its own pick follows `main`, so OptChat runs on the model the user is already using. */
 +export interface ProfileConfig extends Settings { compactor?: ModelChoice; subagent?: ModelChoice; main?: ModelChoice }
 +/** Roles whose own pick overrides following Pi's model. */
@@ -482,7 +500,7 @@ index 0000000..8681e71
 +  assert.deepEqual(notices, [], 'no notice: the turn continues');
 +});
 diff --git a/test/main-model.test.ts b/test/main-model.test.ts
-index 15abf0f..4a41fb3 100644
+index 15abf0f..6a81d64 100644
 --- a/test/main-model.test.ts
 +++ b/test/main-model.test.ts
 @@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
@@ -502,7 +520,15 @@ index 15abf0f..4a41fb3 100644
  import { removeDir } from './support.ts';
  
  const model = (id: string, reasoning: boolean) =>
-@@ -77,3 +80,77 @@ test('the main model and thinking level follow the profile', async () => {
+@@ -44,6 +47,7 @@ test('the main model and thinking level follow the profile', async () => {
+     createProfile('fixture');
+     const first = await open(dir, undefined, sessions);
+     assert.equal(first.session.model?.id, 'plain', 'nothing saved yet: Pi keeps its own pick');
++    assert.deepEqual(first.saved(), { provider: 'fixture', model: 'plain', thinking: 'off' }, 'the first open records where Pi is, so the profile stops following Pi');
+     await first.session.setModel(first.runtime.getModel('fixture', 'deep')!);
+     first.session.setThinkingLevel('low');
+     assert.deepEqual(first.saved(), { provider: 'fixture', model: 'deep', thinking: 'low' });
+@@ -77,3 +81,77 @@ test('the main model and thinking level follow the profile', async () => {
      removeDir(dir);
    }
  });
