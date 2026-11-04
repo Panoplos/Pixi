@@ -8,7 +8,8 @@
 		"name": "pixi"
 	},
 	"bin": {
-		"pixi": "dist/bundle/cli.js"
+		"pixi": "dist/bundle/cli.js",
+		"pixi-rpc": "dist/bundle/rpc-entry.js"
 	},
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",

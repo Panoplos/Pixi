@@ -31,6 +31,23 @@ ls ~/.pi/agent/rpc/            # one socket per running session, named after its
 { echo '{"id":"1","type":"prompt","message":"run the tests"}'; sleep 1; } | nc -U ~/.pi/agent/rpc/<id>.sock
 ```
 
+A shell does not have to speak JSON. The `rpc-entry` binary (installed as `pixi-rpc`)
+carries two shortcuts:
+
+```bash
+pixi-rpc list                                     # sessions serving RPC, with their OptChat profile
+pixi-rpc send --session-id <id> "run the tests"   # streams the reply, returns when the session is idle
+pixi-rpc send --profile work "run the tests"      # same, addressed by OptChat profile
+```
+
+`send` takes a full session id, a unique id prefix, a socket path, or nothing for the
+newest serving session. `--profile <name>` (also `--optchat-profile`) picks the serving
+session on that OptChat profile instead, and fails when none or more than one is on it. A message sent to a busy session is queued as a follow-up,
+so it does not fail or interrupt the current turn, and `--timeout <seconds>` (default
+600) bounds the wait. `list` prints each session id next to the OptChat profile its
+transcript is bound to, or `-` for a session without one; a socket left behind by a
+crashed session is not listed.
+
 While a session is serving, its footer shows `rpc <session id>` under the model line.
 
 `listRpcEndpoints()` returns those sessions newest first, and `findRpcSocket()` accepts

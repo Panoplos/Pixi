@@ -67,7 +67,8 @@ function mtime(path: string): number {
 	}
 }
 
-async function isServing(path: string): Promise<boolean> {
+/** Whether something is listening on `path` right now. */
+export async function isRpcServing(path: string): Promise<boolean> {
 	return new Promise((resolve) => {
 		const socket = net.connect(path);
 		const finish = (serving: boolean) => {
@@ -102,7 +103,7 @@ export async function findRpcSocket(target?: string): Promise<string> {
 
 	const endpoints = listRpcEndpoints();
 	for (const endpoint of endpoints) {
-		if (await isServing(endpoint.path)) return endpoint.path;
+		if (await isRpcServing(endpoint.path)) return endpoint.path;
 	}
 	throw new Error(`No session is serving RPC. Known sockets: ${describe(endpoints)}`);
 }

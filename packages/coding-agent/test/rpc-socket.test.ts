@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AgentSessionRuntime } from "../src/core/agent-session-runtime.ts";
+import { runRpcCli } from "../src/modes/rpc/cli.ts";
 import type { RpcCommandDeps } from "../src/modes/rpc/commands.ts";
 import { findRpcSocket, listRpcEndpoints, rpcSocketPath } from "../src/modes/rpc/discovery.ts";
 import { connectRpcClient } from "../src/modes/rpc/rpc-client.ts";
@@ -206,5 +207,120 @@ describe("RPC discovery", () => {
 
 		await expect(findRpcSocket("cccc")).rejects.toThrow(/No session matches "cccc"/);
 		await expect(findRpcSocket("bbbbbbbb")).rejects.toThrow(/matches 2 sessions/);
+	});
+});
+
+describe("pixi-rpc cli", () => {
+	const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+	let harness: Harness;
+	let agentDir: string;
+	let servers: RpcSocketServer[];
+
+	const startOn = async (path: string) => {
+		const deps: RpcCommandDeps = {
+			get session() {
+				return harness.session;
+			},
+			runtimeHost: {} as AgentSessionRuntime,
+			rebindSession: async () => {},
+		};
+		const server = await startRpcSocketServer({ path, deps });
+		servers.push(server);
+		return server;
+	};
+
+	const run = async (argv: string[]) => {
+		let out = "";
+		let err = "";
+		const code = await runRpcCli(argv, {
+			out: (text) => {
+				out += text;
+			},
+			err: (text) => {
+				err += text;
+			},
+		});
+		return { code, out, err };
+	};
+
+	beforeEach(async () => {
+		harness = await createHarness();
+		agentDir = join(tmpdir(), `pixi-rpc-cli-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		servers = [];
+	});
+
+	afterEach(() => {
+		for (const server of servers) server.close();
+		if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+		harness.cleanup();
+	});
+
+	it("sends one message to a session and streams the reply", async () => {
+		harness.setResponses([fauxAssistantMessage("streamed back")]);
+		const path = join(tmpdir(), `pixi-rpc-cli-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`);
+		await startOn(path);
+
+		const { code, out, err } = await run(["send", "--session-id", path, "say hello"]);
+
+		expect(err).toBe("");
+		expect(code).toBe(0);
+		expect(out).toContain("streamed back");
+		expect(getUserTexts(harness)).toEqual(["say hello"]);
+	});
+
+	it("lists the session id next to its OptChat profile", async () => {
+		const sessionId = harness.session.sessionId;
+		await startOn(rpcSocketPath(sessionId));
+		const projectDir = join(agentDir, "sessions", "--projects-fixture--");
+		mkdirSync(projectDir, { recursive: true });
+		writeFileSync(
+			join(projectDir, `2026-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+			`${JSON.stringify({ type: "session", id: sessionId, cwd: "/projects/fixture" })}\n` +
+				`${JSON.stringify({ type: "custom", customType: "optchat.profile", data: { name: "fixture-profile" } })}\n`,
+		);
+
+		const { code, out } = await run(["list"]);
+
+		expect(code).toBe(0);
+		expect(out.trim().split(/\s+/)).toEqual([sessionId, "fixture-profile"]);
+	});
+
+	const writeBinding = (sessionId: string, name: string) => {
+		const projectDir = join(agentDir, "sessions", "--projects-fixture--");
+		mkdirSync(projectDir, { recursive: true });
+		writeFileSync(
+			join(projectDir, `2026-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+			`${JSON.stringify({ type: "session", id: sessionId, cwd: "/projects/fixture" })}\n` +
+				`${JSON.stringify({ type: "custom", customType: "optchat.profile", data: { name } })}\n`,
+		);
+	};
+
+	// --profile addresses a session by its OptChat profile instead of its id.
+	it("sends to the session on a profile", async () => {
+		harness.setResponses([fauxAssistantMessage("to the profile")]);
+		const sessionId = harness.session.sessionId;
+		await startOn(rpcSocketPath(sessionId));
+		writeBinding(sessionId, "work");
+
+		const { code, out, err } = await run(["send", "--profile", "work", "hello"]);
+
+		expect(err).toBe("");
+		expect(code).toBe(0);
+		expect(out).toContain("to the profile");
+		expect(getUserTexts(harness)).toEqual(["hello"]);
+	});
+
+	it("reports a profile no session is on", async () => {
+		const sessionId = harness.session.sessionId;
+		await startOn(rpcSocketPath(sessionId));
+		writeBinding(sessionId, "work");
+
+		const { code, err } = await run(["send", "--optchat-profile", "missing", "hello"]);
+
+		expect(code).toBe(1);
+		expect(err).toContain('No session is on profile "missing"');
+		expect(err).toContain("work");
 	});
 });
