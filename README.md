@@ -5,6 +5,7 @@
 </p>
 <p align="center">
   <a href="https://github.com/earendil-works/pi"><img alt="upstream" src="https://img.shields.io/badge/fork%20of-earendil--works%2Fpi-5865F2?style=flat-square" /></a>
+  <a href="https://github.com/earendil-works/pi/commit/6e2222a8dda06e3d69fad46d630f152f5873567a"><img alt="synced with upstream pi" src="https://img.shields.io/badge/synced%20with%20pi-6e2222a8d-5865F2?style=flat-square" /></a>
 </p>
 
 > New issues and PRs from new contributors are auto-closed by default. Maintainers review auto-closed issues daily. See [CONTRIBUTING.md](CONTRIBUTING.md).
