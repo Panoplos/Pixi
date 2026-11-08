@@ -12,13 +12,15 @@
 
 # Pixi
 
-**P**i e**X**perience **I**mproved — a fork of [earendil-works/pi](https://github.com/earendil-works/pi) with UX and provider improvements.
+**P**i e**X**perience **I**mproved.
 
-Pixi is a fork of [earendil-works/pi](https://github.com/earendil-works/pi) — the Pi agent harness and its self-extensible coding agent — with UX and provider improvements. Pi ships with powerful defaults but skips features like sub-agents and plan mode; ask it to build what you want.
+Pixi is [Pi](https://github.com/earendil-works/pi) with extra UX and provider work merged in. Nothing is taken away: providers, config, extensions, skills, prompt templates, themes, packages, RPC, and the SDK behave exactly as Pi documents them.
 
-Adapt Pi to your workflows, not the other way around. Customize Pi with [extensions](packages/coding-agent/docs/extensions.md), [skills](packages/coding-agent/docs/skills.md), [prompt templates](packages/coding-agent/docs/prompt-templates.md), and [themes](packages/coding-agent/docs/themes.md). Bundle them as [Pi packages](packages/coding-agent/docs/packages.md) and share via npm or git.
+This README covers what Pixi adds and how to install it. Pi itself is documented elsewhere, and those docs apply here as-is:
 
-Documentation lives in [packages/coding-agent/docs](packages/coding-agent/docs) — you can also ask the agent to explain itself. For the upstream project, see [pi.dev](https://pi.dev). Use Pixi [interactively](packages/coding-agent/docs/usage.md), automate it in [print or JSON mode](packages/coding-agent/docs/cli.md), control it over [RPC](packages/coding-agent/docs/rpc.md), or build apps with the [Pi TypeScript SDK](packages/coding-agent/docs/sdk.md).
+- [Pi README](https://github.com/earendil-works/pi#readme) — project overview, Nix builds, monorepo packages, release binaries, supply-chain rules
+- [pi.dev/docs](https://pi.dev/docs/latest) — setup and usage
+- [`packages/coding-agent/docs`](packages/coding-agent/docs) — sessions, [CLI](packages/coding-agent/docs/cli.md), [RPC](packages/coding-agent/docs/rpc.md), [SDK](packages/coding-agent/docs/sdk.md), [extensions](packages/coding-agent/docs/extensions.md), [skills](packages/coding-agent/docs/skills.md), [prompt templates](packages/coding-agent/docs/prompt-templates.md), [themes](packages/coding-agent/docs/themes.md), [containerization](packages/coding-agent/docs/containerization.md)
 
 ## Installing Pixi
 
@@ -37,9 +39,14 @@ npm run build
 mkdir -p ~/.local/bin && ln -s "$PWD/packages/coding-agent/dist/bundle/cli.js" ~/.local/bin/pixi
 ```
 
-## Enhancements in this fork
+Pixi needs Node.js 22.19 or newer. Start it in the directory you want to work in, connect a provider with `/login`, and give it a task:
 
-Changes on top of upstream:
+```bash
+cd /path/to/project
+pixi
+```
+
+## Enhancements in this fork
 
 - **Extra providers** — Bitdeer, DeepInfra, and Inco are wired in as first-class providers, with model catalogs seeded from live API data and refreshed by the model generator.
 - **Next-message suggestions** — after each assistant reply, a small model drafts the suggested next prompt, shown as ghost text that fills in word by word; Tab accepts the whole line, or the right arrow accepts it a word at a time. The suggestion model is picked separately from your main model — choose it in `/settings` → Suggestion model, or set `suggestions.model` (a `"provider/model"` string) in `~/.pi/agent/settings.json` — so a fast, cheap model can draft suggestions while your main model does the heavy lifting.
@@ -64,84 +71,11 @@ Changes on top of upstream:
 - **RPC on a running session** — an interactive session serves the RPC protocol on `~/.pi/agent/rpc/<session id>.sock`, so a script or editor can prompt or inspect a session you are using in the terminal; the footer shows `rpc <session id>` while it is on, and `--no-rpc` turns it off. See [RPC mode](packages/coding-agent/docs/rpc.md#drive-a-running-interactive-session) and [CLI Integration](packages/coding-agent/docs/cli-integration.md#control-pi-with-rpc) for `RpcClient` and `connectRpcClient()`.
 - **Secret masking** — [`key-guard.ts`](packages/coding-agent/examples/extensions/key-guard.ts) masks API keys, tokens, and PEM blocks before they enter model context. It shells out to [`pixi-mask`](https://github.com/Panoplos/pixi-mask), a 1.5 MB Rust CLI that runs the gitleaks ruleset over a tool result in about 5 ms, and falls back to in-process patterns when the binary is not on `PATH`.
 
-## Getting started
+## Sandboxing
 
-Install the command-line interface:
+Like Pi, Pixi has no built-in permission system: it runs with the permissions of the user and process that launched it. For stronger boundaries, containerize it — see [containerization](packages/coding-agent/docs/containerization.md) for a host-plus-micro-VM extension, plain Docker, and policy-controlled sandboxes.
 
-```bash
-curl -fsSL https://pi.dev/install.sh | sh
-```
-
-On Windows:
-
-```shell
-powershell -c "irm https://pi.dev/install.ps1 | iex"
-```
-
-The installer pins all dependencies and updates Pi with `pi update`. Alternatively, install directly with npm, which does not pin transitive dependencies:
-
-```bash
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-```
-
-Pi requires Node.js 22.19 or newer. The macOS, Linux, and Windows installers can install it if needed. Pi does not require dependency lifecycle scripts for a normal npm installation.
-
-Start Pi in the directory where you want it to work:
-
-```bash
-cd /path/to/project
-pi
-```
-
-For a built-in AI provider, run `/login` inside Pi to connect a subscription or API key. Then give Pi a task.
-
-See the [documentation](https://pi.dev/docs/latest) for full setup and usage instructions, or [visit pi.dev](https://pi.dev) for demos.
-
-## Run with Nix
-
-```bash
-nix run github:earendil-works/pi/stable
-```
-
-`stable` points at the latest release. Install it with `nix profile add github:earendil-works/pi/stable` and update with `nix profile upgrade pi`. Use a release tag such as `github:earendil-works/pi/v1.0.0` to pin a version, or `github:earendil-works/pi` for unreleased changes on `main`. Nix builds Pi from source.
-
-Supports ARM64 and x86-64 on Linux and macOS. Use `nix build .` or `nix run .` to build or run your checkout.
-
-Nix builds are offline, so the bundled model data comes from a pi.dev model catalog revision pinned in `nix/model-catalog.json`. At runtime, Pi still overlays newer catalog data from pi.dev as usual. The Nix workflow replaces the pin on `main` when it no longer matches the checkout, for example after a provider is added or gains a new model type. To refresh it by hand:
-
-```bash
-npm run update:model-catalog-pin
-```
-
-## Packages
-
-This monorepo contains the Pi CLI and its supporting libraries.
-
-| Package | Description |
-|---------|-------------|
-| **[@earendil-works/chord](packages/chord)** | Object runtime for apps across processes: contracts, documents, a store, links, plugins with hot reload, HTTP, workers, web and terminal clients |
-| **[@earendil-works/pi-telemetry](packages/telemetry)** | Vendor-neutral telemetry contracts, reference adapter, conformance tests, and typed schemas |
-| **[@earendil-works/pi-ai](packages/ai)** | Unified multi-provider LLM API (OpenAI, Anthropic, Google, etc.) |
-| **[@earendil-works/pi-durable](packages/durable)** | Durable conversation, task, and document runtime |
-| **[@earendil-works/pi-agent-core](packages/agent)** | Agent runtime with tool calling and state management |
-| **[@earendil-works/pi-coding-agent](packages/coding-agent)** | Interactive coding agent CLI |
-| **[@earendil-works/pi-tui](packages/tui)** | Terminal UI library with differential rendering |
-
-## Permissions & Containerization
-
-Pixi does not include a built-in permission system for restricting filesystem, process, network, or credential access. By default, it runs with the permissions of the user and process that launched it.
-
-If you need stronger boundaries, containerize or sandbox Pixi. See [packages/coding-agent/docs/containerization.md](packages/coding-agent/docs/containerization.md) for three patterns:
-
-- **Gondolin extension**: keep `pi` and provider auth on the host while routing built-in tools and `!` commands into a local Linux micro-VM.
-- **Plain Docker**: run the whole `pi` process in a local container for simple isolation.
-- **OpenShell**: run the whole `pi` process in a policy-controlled sandbox.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and [AGENTS.md](AGENTS.md) for project-specific rules (for both humans and agents).  Longer term plans for Pi can also be found in [RFCs](https://rfc.earendil.com/keyword/pi).
-
-## Development
+## Working on Pixi
 
 ```bash
 npm install --ignore-scripts  # Install all dependencies without running lifecycle scripts
@@ -149,79 +83,15 @@ npm run build         # Refresh model data, then build all packages
 npm run build:offline # Rebuild using existing model data without network access
 npm run check         # Lint, format, and type check
 ./test.sh            # Run tests (skips LLM-dependent tests without API keys)
-./pi-test.sh         # Run pi from sources (can be run from any directory)
+./pi-test.sh         # Run pixi from sources (can be run from any directory)
 ```
 
-### Using local packages outside the monorepo
+Pixi follows Pi's monorepo layout and build scripts. For Nix builds, local package artifacts, standalone binaries, and the supply-chain rules (pinned dependencies, the lockfile gate), use the matching sections of [Pi's README](https://github.com/earendil-works/pi#readme).
 
-Build every public package into one coherent local artifact set:
+## Contributing
 
-```bash
-npm run pack:packages -- --out .artifacts/pi-packages
-```
-
-This refreshes model data before building `pi-ai`. To avoid network access when
-model data is already hydrated, pass `--offline-model-data`.
-
-Then configure an external project to consume one package and resolve all of
-its Pi dependencies from the same artifact set. npm is the default:
-
-```bash
-node scripts/use-local-packages.mjs \
-  --manifest .artifacts/pi-packages/manifest.json \
-  --consumer ../my-project \
-  --package @earendil-works/pi-durable \
-  --package @earendil-works/pi-agent-core
-cd ../my-project
-npm install --ignore-scripts
-```
-
-For a pnpm project, point `--consumer` at the workspace root:
-
-```bash
-node scripts/use-local-packages.mjs \
-  --manifest .artifacts/pi-packages/manifest.json \
-  --consumer ../my-project \
-  --package @earendil-works/pi-agent-core \
-  --package-manager pnpm
-cd ../my-project
-pnpm install --ignore-scripts
-```
-
-Repeat `--package` for each direct dependency. The command updates the
-consumer's `package.json` with content-addressed local `file:` references. It
-writes transitive overrides to `package.json` for npm or `pnpm-workspace.yaml`
-for pnpm. Keep the artifact directory available while installing or updating
-the consumer. Re-run both commands after changing Pi source.
-
-## Building standalone binaries from release source
-
-GitHub releases include a versioned source archive covered by the release's `SHA256SUMS` file. Extract it and run the same build script used for the official standalone binaries:
-
-```bash
-VERSION="<release-version>"
-tar -xzf "pixi-${VERSION}-source.tar.gz"
-cd "pixi-${VERSION}"
-./scripts/build-binaries.sh --offline-model-data --platform linux-x64 --out "$PWD/out"
-```
-
-The archive includes release model data and native prebuilds. `--offline-model-data` uses that model data without refreshing provider catalogs. The script installs dependencies and builds the executable with its runtime assets; pass `--skip-install` if dependencies are already provided.
-
-## Supply-chain hardening
-
-We treat npm dependency changes as reviewed code changes.
-
-- Direct external dependencies are pinned to exact versions. Internal workspace packages remain version-ranged.
-- `.npmrc` sets `save-exact=true` and `min-release-age=2` to avoid same-day dependency releases during npm resolution.
-- `package-lock.json` is the dependency ground truth. Pre-commit blocks accidental lockfile commits unless `PI_ALLOW_LOCKFILE_CHANGE=1` is set.
-- `npm run check` verifies pinned direct deps, native TypeScript import compatibility, and the generated coding-agent install lock.
-- The pi.dev installer installs from `packages/coding-agent/install-lock/`, generated from the root lockfile, to pin transitive deps. The npm package does not pin transitive deps.
-- Local release smoke tests and npm publication use the same tarball packer; npm publishes the validated tarballs rather than repacking workspace directories.
-- Local release installs, documented npm installs, and `pi update --self` use `--ignore-scripts` where supported.
-- CI installs with `npm ci --ignore-scripts`, and a scheduled GitHub workflow runs `npm audit --omit=dev` plus `npm audit signatures --omit=dev`.
-- Install lock generation has an explicit allowlist for dependency lifecycle scripts; new lifecycle-script deps fail checks until reviewed.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and [AGENTS.md](AGENTS.md) for project-specific rules (for both humans and agents). Longer term plans for Pi live in the [RFCs](https://rfc.earendil.com/keyword/pi).
 
 ## License
 
 MIT
-
