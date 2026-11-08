@@ -1,0 +1,18 @@
+{
+  "theme": "lavender",
+  "defaultProvider": "bitdeer",
+  "defaultModel": "zai-org/GLM-5.3-Flash",
+  "defaultThinkingLevel": "low",
+  "hideThinkingBlock": true,
+  "enableInstallTelemetry": false,
+  "defaultProjectTrust": "always",
+  "tuiMode": "fullscreen",
+  "outputPad": 1,
+  "editorPaddingX": 0,
+  "steeringMode": "one-at-a-time",
+  "compaction": {
+    "reserveTokens": 0
+  },
+  "collapseChangelog": true,
+  "quietStartup": true
+}
