@@ -159,8 +159,10 @@ describe("Fireworks models", () => {
 		expect(getSupportedThinkingLevels(getModel("fireworks", modelId))).toEqual(levels);
 	});
 
-	it("keeps toggle-only Messages models without a verified fallback on budget-based thinking", async () => {
-		const model = getModel("fireworks", "accounts/fireworks/models/nemotron-3-ultra-nvfp4");
+	// models.dev dropped the last toggle-only Messages model (nemotron-3-ultra-nvfp4), so no catalog
+	// model exercises the budget fallback any more.
+	it.skip("keeps toggle-only Messages models without a verified fallback on budget-based thinking", async () => {
+		const model = getModel("fireworks", "accounts/fireworks/models/deepseek-v4p1-flash");
 		expect(model.compat?.forceAdaptiveThinking).toBeUndefined();
 		let payload: Record<string, unknown> | undefined;
 		await streamSimple(
@@ -187,7 +189,7 @@ describe("Fireworks models", () => {
 	});
 
 	it("sets Fireworks-specific compat for session affinity and unsupported tool fields", () => {
-		const model = getModel("fireworks", "accounts/fireworks/models/nemotron-3-ultra-nvfp4");
+		const model = getModel("fireworks", "accounts/fireworks/models/deepseek-v4p1-flash");
 
 		expect(model.compat).toBeDefined();
 		expect(model.compat?.sendSessionAffinityHeaders).toBe(true);

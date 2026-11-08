@@ -31,8 +31,9 @@ Install the destructive-tool-guard directly from this repository:
 pixi install git:github.com/Panoplos/Pixi
 ```
 | `dirty-repo-guard.ts` | Prevents session changes with uncommitted git changes |
-| `sandbox/` | OS-level sandboxing using `@anthropic-ai/sandbox-runtime` with per-project config |
 | `gondolin/` | Route built-in tools and `!` commands into a Gondolin micro-VM |
+
+For isolation setup and limitations, see [Run Pi in an isolated environment](../../docs/containerization.md).
 
 ### Custom Tools
 

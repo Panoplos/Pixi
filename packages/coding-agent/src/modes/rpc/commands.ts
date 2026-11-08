@@ -19,6 +19,11 @@ export interface RpcCommandDeps {
 	readonly runtimeHost: AgentSessionRuntime;
 	/** Called after a command replaced the session so subscriptions can follow. */
 	rebindSession(): Promise<void>;
+	/**
+	 * Work that starts before the handler returns and settles later (a prompt keeps running after
+	 * its response), reported as +1/-1 so a caller can wait for the session to be free.
+	 */
+	onPendingChange?(delta: 1 | -1): void;
 }
 
 export function rpcSuccess<T extends RpcCommand["type"]>(
@@ -63,6 +68,7 @@ export async function handleRpcCommand(
 			// Start prompt handling immediately, but emit the authoritative response only after
 			// prompt preflight succeeds. Queued and immediately handled prompts also count as success.
 			let preflightSucceeded = false;
+			deps.onPendingChange?.(1);
 			void session
 				.prompt(command.message, {
 					images: command.images,
@@ -77,7 +83,8 @@ export async function handleRpcCommand(
 					if (!preflightSucceeded) {
 						output(error(id, "prompt", e.message));
 					}
-				});
+				})
+				.finally(() => deps.onPendingChange?.(-1));
 			return undefined;
 		}
 

@@ -4,6 +4,7 @@ import {
 	type Focusable,
 	fuzzyFilter,
 	getKeybindings,
+	getSelectPageIndex,
 	Input,
 	Spacer,
 	Text,
@@ -58,10 +59,13 @@ interface DefaultModelReference {
 
 type ModelScope = "all" | "scoped";
 
+const MAX_VISIBLE = 10;
+
 /**
  * Component that renders a model selector with search
  */
 export class ModelSelectorComponent extends Container implements Focusable {
+	readonly capturesViewportInput: boolean = true;
 	private searchInput: Input;
 
 	// Focusable implementation - propagate to searchInput for IME cursor positioning
@@ -233,8 +237,10 @@ export class ModelSelectorComponent extends Container implements Focusable {
 					this.refreshStatusSuccess = true;
 				}
 			}
+			const selectedModel = this.filteredModels[this.selectedIndex]?.model;
 			this.loadModelsFromSnapshot();
-			this.filterModels(this.searchInput.getValue());
+			// The user may have moved while the refresh was in flight, and the refresh can shift rows.
+			this.filterModels(this.searchInput.getValue(), selectedModel);
 			this.tui.requestRender();
 		} catch (error) {
 			if (this.closed) return;
@@ -311,7 +317,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		}
 	}
 
-	private filterModels(query: string): void {
+	private filterModels(query: string, preferredModel?: Model<any>): void {
 		if (query) {
 			// A token that exactly names a provider (e.g. "bitdeer") pins the search to
 			// that provider; fuzzy matching would otherwise scatter the token across
@@ -347,15 +353,19 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		} else {
 			this.filteredModels = this.activeModels;
 		}
-		// When filtering by a query, move the selector to the top row so the best
-		// match is highlighted. When the query is cleared, keep the current position
-		// clamped to the (restored) list length.
-		this.selectedIndex = query
-			? 0
-			: Math.max(
-					Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1)),
-					this.showResetRow() ? -1 : 0,
-				);
+		// Keep the preferred model selected if it is still listed. Otherwise, when filtering
+		// by a query, move the selector to the top row so the best match is highlighted.
+		// When the query is cleared, keep the current position clamped to the (restored) list length.
+		const preferredIndex = preferredModel
+			? this.filteredModels.findIndex((item) => modelsAreEqual(preferredModel, item.model))
+			: -1;
+		if (preferredIndex >= 0) this.selectedIndex = preferredIndex;
+		else {
+			const minIndex = this.showResetRow() ? -1 : 0;
+			this.selectedIndex = query
+				? 0
+				: Math.max(minIndex, Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1)));
+		}
 		this.updateList();
 	}
 
@@ -477,6 +487,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 	handleInput(keyData: string): void {
 		const kb = getKeybindings();
+		const pageIndex = getSelectPageIndex(kb, keyData, this.selectedIndex, this.filteredModels.length, MAX_VISIBLE);
 		if (kb.matches(keyData, "tui.input.tab")) {
 			if (this.scopedModelItems.length > 0) {
 				const nextScope: ModelScope = this.scope === "all" ? "scoped" : "all";
@@ -499,6 +510,12 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		else if (kb.matches(keyData, "tui.select.down")) {
 			if (this.filteredModels.length === 0 && minIndex === 0) return;
 			this.selectedIndex = this.selectedIndex === maxIndex ? minIndex : this.selectedIndex + 1;
+			this.updateList();
+		}
+		// Page up/down
+		else if (pageIndex !== undefined) {
+			if (this.filteredModels.length === 0) return;
+			this.selectedIndex = pageIndex;
 			this.updateList();
 		}
 		// Enter

@@ -20,6 +20,8 @@ function renderContext(lastComponent: Component | undefined, argsComplete: boole
 		isError: false,
 		durationMs: undefined,
 		outputPad: 1,
+		keyText: () => "",
+		keyHint: (_keybinding, description) => description,
 	};
 }
 
