@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
-import { createModels } from "../src/models.ts";
+import { createModels, getSupportedThinkingLevels } from "../src/models.ts";
 import { InMemoryModelsStore } from "../src/models-store.ts";
 import { bitdeerProvider } from "../src/providers/bitdeer.ts";
 import {
@@ -31,7 +31,15 @@ describe("Bitdeer catalog", () => {
 			api: "openai-completions",
 			baseUrl: "https://api-inference.bitdeer.ai/v1",
 			reasoning: true,
-			thinkingLevelMap: { off: "none" },
+			thinkingLevelMap: {
+				off: "none",
+				minimal: null,
+				low: "low",
+				medium: null,
+				high: "high",
+				xhigh: null,
+				max: "max",
+			},
 			input: ["text", "image"],
 			compat: {
 				supportsStore: false,
@@ -48,12 +56,26 @@ describe("Bitdeer catalog", () => {
 		});
 	});
 
-	it("marks models that cannot disable reasoning with an unrepresentable off level", () => {
+	// The site API publishes each model's accepted reasoning_effort values; only those are selectable.
+	it("offers the effort levels the endpoint publishes for each model", () => {
 		const byId = new Map(getBitdeerSeedModels().map((model) => [model.id, model]));
-		// Measured on the live endpoint: GLM-5.3/Flash 400 on reasoning_effort "none".
-		expect(byId.get("zai-org/GLM-5.3")?.thinkingLevelMap).toEqual({ off: null });
-		expect(byId.get("zai-org/GLM-5.3-Flash")?.thinkingLevelMap).toEqual({ off: null });
-		expect(byId.get("deepseek-ai/DeepSeek-V4.1-Flash")?.thinkingLevelMap).toEqual({ off: "none" });
+		expect(getSupportedThinkingLevels(byId.get("deepseek-ai/DeepSeek-V4.1-Flash-1017")!)).toEqual([
+			"off",
+			"low",
+			"high",
+			"max",
+		]);
+		// GLM-5.3 cannot disable reasoning (it 400s on "none") and answers low/high/max.
+		expect(byId.get("zai-org/GLM-5.3")?.thinkingLevelMap).toEqual({
+			off: null,
+			minimal: null,
+			low: "low",
+			medium: null,
+			high: "high",
+			xhigh: null,
+			max: "max",
+		});
+		expect(getSupportedThinkingLevels(byId.get("Qwen/Qwen3.8-27B")!)).toEqual(["low", "medium", "xhigh"]);
 	});
 
 	it("keeps seeded metadata for a known live id and derives it for unknown ids", () => {
@@ -181,6 +203,7 @@ describe("Bitdeer catalog", () => {
 					outputPrice: 57.6,
 					cachedInputPrice: 0.29,
 					canDisableReasoning: true,
+					supportedReasoningEffort: ["none", "low", "high", "max"],
 					tags: [{ tagId: "image-to-text" }],
 				}),
 				{ status: 200 },
@@ -197,7 +220,15 @@ describe("Bitdeer catalog", () => {
 		expect(models.getModel("bitdeer", "deepseek-ai/DeepSeek-V4.1-Flash-1017")).toMatchObject({
 			provider: "bitdeer",
 			reasoning: true,
-			thinkingLevelMap: { off: "none" },
+			thinkingLevelMap: {
+				off: "none",
+				minimal: null,
+				low: "low",
+				medium: null,
+				high: "high",
+				xhigh: null,
+				max: "max",
+			},
 			input: ["text", "image"],
 			contextWindow: 262_144,
 			maxTokens: 32_768,

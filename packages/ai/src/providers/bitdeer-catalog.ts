@@ -17,8 +17,24 @@ const BITDEER_COMPAT = {
 	maxTokensField: "max_tokens",
 } as const satisfies OpenAICompletionsCompat;
 
-const REASONING_THINKING_LEVEL_MAP = { off: "none" } as const satisfies ThinkingLevelMap;
-const NO_DISABLE_THINKING_LEVEL_MAP = { off: null } as const satisfies ThinkingLevelMap;
+/** pi's effort levels below and above the default. Bitdeer's site API publishes which of them a model accepts. */
+const EFFORT_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+/** `GetModel.supportedReasoningEffort` per model. V4.1-Flash and V4-Flash left the site list; 1017 is
+ * only a weights update of V4.1-Flash, so the family shares one list. */
+const DEEPSEEK_V4_EFFORTS = ["none", "low", "high", "max"] as const;
+const GLM_EFFORTS = ["low", "high", "max"] as const;
+const QWEN_EFFORTS = ["xhigh", "medium", "low"] as const;
+
+/** Levels the endpoint does not accept map to null, so the picker never offers - and the request never
+ * sends - a `reasoning_effort` value Bitdeer would reject. Without a published list, all that is known
+ * is whether reasoning can be turned off at all. */
+function bitdeerThinkingLevelMap(efforts: readonly string[], canDisableReasoning: boolean): ThinkingLevelMap {
+	if (efforts.length === 0) return { off: canDisableReasoning ? "none" : null };
+	const map: ThinkingLevelMap = { off: efforts.includes("none") ? "none" : null };
+	for (const level of EFFORT_LEVELS) map[level] = efforts.includes(level) ? level : null;
+	return map;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -44,15 +60,17 @@ function bitdeerModel(input: {
 	id: string;
 	name: string;
 	reasoning: boolean;
+	/** Accepted `reasoning_effort` values; empty when unknown, which leaves every level selectable. */
+	efforts?: readonly string[];
 	/** Whether the endpoint accepts `reasoning_effort: "none"` (defaults to true). Models that
-	 * cannot disable reasoning 400 on "none", so "off" must be unrepresentable for them. */
+	 * cannot disable reasoning 400 on "none", so "off" must be unrepresentable for them. Only
+	 * consulted when `efforts` is empty. */
 	canDisableReasoning?: boolean;
 	input: ("text" | "image")[];
 	cost: Model<"openai-completions">["cost"];
 	contextWindow: number;
 	maxTokens: number;
 }): Model<"openai-completions"> {
-	const canDisable = input.canDisableReasoning ?? true;
 	return {
 		id: input.id,
 		name: input.name,
@@ -61,7 +79,7 @@ function bitdeerModel(input: {
 		provider: "bitdeer",
 		reasoning: input.reasoning,
 		...(input.reasoning
-			? { thinkingLevelMap: canDisable ? REASONING_THINKING_LEVEL_MAP : NO_DISABLE_THINKING_LEVEL_MAP }
+			? { thinkingLevelMap: bitdeerThinkingLevelMap(input.efforts ?? [], input.canDisableReasoning ?? true) }
 			: {}),
 		input: input.input,
 		cost: input.cost,
@@ -89,6 +107,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			id: "deepseek-ai/DeepSeek-V4.1-Flash-1017",
 			name: "DeepSeek V4.1 Flash 1017",
 			reasoning: true,
+			efforts: DEEPSEEK_V4_EFFORTS,
 			input: ["text", "image"],
 			cost: { input: 0.144, output: 0.576, cacheRead: 0.0029, cacheWrite: 0 },
 			contextWindow: 1_048_576,
@@ -98,6 +117,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			id: "deepseek-ai/DeepSeek-V4.1-Flash",
 			name: "DeepSeek V4.1 Flash",
 			reasoning: true,
+			efforts: DEEPSEEK_V4_EFFORTS,
 			input: ["text", "image"],
 			cost: { input: 0.144, output: 0.576, cacheRead: 0.0029, cacheWrite: 0 },
 			contextWindow: 1_048_576,
@@ -107,6 +127,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			id: "deepseek-ai/DeepSeek-V4-Flash",
 			name: "DeepSeek V4 Flash",
 			reasoning: true,
+			efforts: DEEPSEEK_V4_EFFORTS,
 			input: ["text"],
 			cost: { input: 0.14, output: 0.28, cacheRead: 0.01, cacheWrite: 0 },
 			contextWindow: 1_048_576,
@@ -116,6 +137,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			id: "zai-org/GLM-5.3",
 			name: "GLM 5.3",
 			reasoning: true,
+			efforts: GLM_EFFORTS,
 			canDisableReasoning: false,
 			input: ["text"],
 			cost: { input: 0.63, output: 1.98, cacheRead: 0.117, cacheWrite: 0 },
@@ -126,6 +148,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			id: "zai-org/GLM-5.3-Flash",
 			name: "GLM 5.3 Flash",
 			reasoning: true,
+			efforts: GLM_EFFORTS,
 			canDisableReasoning: false,
 			input: ["text", "image"],
 			cost: { input: 0.0825, output: 0.275, cacheRead: 0.0165, cacheWrite: 0 },
@@ -136,6 +159,7 @@ export function getBitdeerSeedModels(): Model<"openai-completions">[] {
 			id: "Qwen/Qwen3.8-27B",
 			name: "Qwen3.8 27B",
 			reasoning: true,
+			efforts: QWEN_EFFORTS,
 			input: ["text", "image"],
 			cost: { input: 0.4, output: 2.4, cacheRead: 0.08, cacheWrite: 0 },
 			contextWindow: 262_144,
@@ -209,6 +233,8 @@ interface BitdeerSiteModelMeta {
 	cost: Model<"openai-completions">["cost"];
 	hasVision: boolean;
 	canDisableReasoning: boolean;
+	/** `supportedReasoningEffort`: the `reasoning_effort` values the endpoint accepts. */
+	reasoningEfforts: string[];
 }
 
 async function postJson(url: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
@@ -245,6 +271,9 @@ export async function fetchBitdeerSiteModelMeta(signal?: AbortSignal): Promise<M
 				},
 				hasVision: tags.some((tag) => isRecord(tag) && tag.tagId === "image-to-text"),
 				canDisableReasoning: detail.canDisableReasoning === true,
+				reasoningEfforts: Array.isArray(detail.supportedReasoningEffort)
+					? detail.supportedReasoningEffort.filter((effort): effort is string => typeof effort === "string")
+					: [],
 			});
 		}),
 	);
@@ -259,9 +288,8 @@ function applyBitdeerSiteMeta(models: Model<"openai-completions">[], meta: Map<s
 		if (site.maxTokens > 0) model.maxTokens = site.maxTokens;
 		if (site.cost.input > 0 || site.cost.output > 0) model.cost = site.cost;
 		if (site.hasVision) model.input = ["text", "image"];
-		if (model.reasoning) {
-			model.thinkingLevelMap = site.canDisableReasoning ? { off: "none" } : { off: null };
-		}
+		if (model.reasoning)
+			model.thinkingLevelMap = bitdeerThinkingLevelMap(site.reasoningEfforts, site.canDisableReasoning);
 	}
 }
 
@@ -311,6 +339,7 @@ export async function fetchBitdeerChatModels(
 					id,
 					name: displayName(id),
 					reasoning: true,
+					efforts: site.reasoningEfforts,
 					canDisableReasoning: site.canDisableReasoning,
 					input: site.hasVision ? ["text", "image"] : ["text"],
 					cost: site.cost,
