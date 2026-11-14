@@ -159,10 +159,9 @@ describe("Fireworks models", () => {
 		expect(getSupportedThinkingLevels(getModel("fireworks", modelId))).toEqual(levels);
 	});
 
-	// models.dev dropped the last toggle-only Messages model (nemotron-3-ultra-nvfp4), so no catalog
-	// model exercises the budget fallback any more.
-	it.skip("keeps toggle-only Messages models without a verified fallback on budget-based thinking", async () => {
-		const model = getModel("fireworks", "accounts/fireworks/models/deepseek-v4p1-flash");
+	it("keeps non-adaptive Messages models on budget-based thinking", async () => {
+		// Use a fixed fixture: the live catalog no longer lists toggle-only Messages models.
+		const model = createFireworksModel();
 		expect(model.compat?.forceAdaptiveThinking).toBeUndefined();
 		let payload: Record<string, unknown> | undefined;
 		await streamSimple(

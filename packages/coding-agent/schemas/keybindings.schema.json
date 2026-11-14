@@ -235,6 +235,14 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Expand mode: reveal tool activity sections"
     },
+    "app.tools.expandUp": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Expand mode: focus the previous section (plain up when the editor takes no arrows)"
+    },
+    "app.tools.expandDown": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Expand mode: focus the next section (plain down when the editor takes no arrows)"
+    },
     "app.thinking.toggle": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Toggle thinking blocks"
